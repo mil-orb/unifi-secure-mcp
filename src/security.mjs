@@ -7,7 +7,13 @@ export function redact(value, secrets = []) {
     return Object.fromEntries(
       Object.entries(value).map(([k, v]) => [
         k,
-        secretKey.test(k.replace(/[^a-z0-9]/gi, '')) ? '[REDACTED]' : redact(v, secrets),
+        secretKey.test(k.replace(/[^a-z0-9]/gi, '')) ||
+        (k === 'code' &&
+          ['authorizedGuestCount', 'authorizedGuestLimit', 'timeLimitMinutes'].some((field) =>
+            Object.hasOwn(value, field),
+          ))
+          ? '[REDACTED]'
+          : redact(v, secrets),
       ]),
     );
   if (typeof value === 'string')
@@ -50,6 +56,8 @@ export function certificateOptions(pem) {
   };
 }
 export const messages = {
+  PERMISSION_CHECK_TIMEOUT:
+    'Local permission validation timed out. Retry when the OS is responsive; do not bypass permission checks.',
   CONFIG_INVALID:
     'Configuration is invalid. Run the local setup command or review the config file.',
   SETUP_REQUIRED: 'Run unifi-secure-mcp setup locally first. Never paste credentials into chat.',

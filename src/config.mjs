@@ -59,10 +59,10 @@ export function loadConfig(path = process.env.UNIFI_MCP_CONFIG || defaultConfigP
           '-DataDirectory',
           data.dataDir,
         ],
-        { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], timeout: 15000 },
+        { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000 },
       );
-    } catch {
-      throw new Error('INSECURE_FILE');
+    } catch (error) {
+      throw new Error(error.code === 'ETIMEDOUT' ? 'PERMISSION_CHECK_TIMEOUT' : 'INSECURE_FILE');
     }
   return Object.freeze({
     ...data,

@@ -5,6 +5,11 @@ import { parseOrigin } from '../src/config.mjs';
 import { redact, assertBoundedJson } from '../src/security.mjs';
 import { renderInventory } from '../src/mermaid.mjs';
 const siteId = '00000000-0000-4000-8000-000000000001';
+
+test('hotspot voucher access codes are secret while country codes remain readable', () => {
+  assert.equal(redact({ code: 'synthetic-voucher', timeLimitMinutes: 60 }).code, '[REDACTED]');
+  assert.equal(redact({ code: 'US', name: 'United States' }).code, 'US');
+});
 test('every documented operation is represented exactly once without executing it', () => {
   const ids = Object.values(spec.paths).flatMap((p) =>
     Object.values(p)

@@ -8,6 +8,7 @@ This is a single-user local STDIO MCP server for a security-critical network con
 - Inputs use JSON Schema validation, discriminator-aware request schemas, bounded nesting/body size, exact path parameters, encoded query values, and rejected extra fields.
 - Authenticated traffic uses one locally configured HTTPS origin, a trusted pinned certificate, TLS 1.2+, certificate validity checks, no redirect following, and no write retry.
 - Credentials are loaded inside the server and never returned intentionally. Responses redact sensitive field names and exact loaded secret values; upstream error bodies are suppressed.
+- Hotspot voucher access codes are redacted as credentials. Ordinary country codes remain readable. This limits credential distribution through chat while preserving the underlying API operations.
 - All mutation tools preview. Applying requires write-capable configuration, a valid exact operation/site permit, an unexpired single-use plan, exact confirmation, a cross-process lock, and a durable pre-send audit record.
 - Where an equivalent GET exists, the target is re-read and compared with the preview. Changed secrets also invalidate the preview. Requests without an equivalent GET explicitly disclose that limitation.
 - Requests have a 15-second network deadline, 2 MiB response cap, 128 KiB input cap, four active tool calls, and bounded pagination (1–200 per page). Twenty in-memory plans are retained for at most five minutes each.

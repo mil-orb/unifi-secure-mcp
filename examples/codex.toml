@@ -2,7 +2,7 @@
 [mcp_servers.unifi]
 command = '/absolute/path/to/node'
 args = ['/absolute/path/to/unifi-secure-mcp/src/cli.mjs', 'serve', '--config', '/absolute/path/outside/checkout/config.json']
-startup_timeout_sec = 30
+startup_timeout_sec = 45
 tool_timeout_sec = 120
 
 [mcp_servers.unifi.tools.unifi_apply_plan]

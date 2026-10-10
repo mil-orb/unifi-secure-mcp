@@ -11,6 +11,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { writePrivate, secureDirectory, storeSecret } from '../src/storage.mjs';
 import { grant, revoke } from '../src/permits.mjs';
 import { UniFiClient } from '../src/client.mjs';
+import { messages } from '../src/security.mjs';
 const id = '00000000-0000-4000-8000-000000000001';
 test('real stdio MCP and pinned HTTPS: read, preview, permit, apply, restore, reject replay', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'unifi-mcp-test-'));
@@ -96,8 +97,18 @@ test('real stdio MCP and pinned HTTPS: read, preview, permit, apply, restore, re
       ],
       stderr: 'pipe',
     });
-    transport.stderr?.on('data', () => {});
-    await client.connect(transport);
+    let diagnostics = '';
+    transport.stderr?.on('data', (chunk) => {
+      diagnostics = (diagnostics + chunk.toString()).slice(-4096);
+    });
+    try {
+      await client.connect(transport);
+    } catch {
+      throw new Error(
+        Object.values(messages).find((message) => diagnostics.includes(message)) ||
+          'MCP simulator startup failed; no raw diagnostics returned.',
+      );
+    }
     const call = (name, args = {}) => client.callTool({ name, arguments: args });
     const result = (r) => r.structuredContent.result;
     const tools = await client.listTools();

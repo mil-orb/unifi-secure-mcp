@@ -35,7 +35,7 @@ The [official OpenAI MCP documentation](https://learn.chatgpt.com/docs/extend/mc
 [mcp_servers.unifi]
 command = 'C:\Program Files\nodejs\node.exe'
 args = ['C:\Tools\unifi-secure-mcp\src\cli.mjs', 'serve', '--config', 'C:\Private\unifi\config.json']
-startup_timeout_sec = 30
+startup_timeout_sec = 45
 tool_timeout_sec = 120
 
 [mcp_servers.unifi.tools.unifi_apply_plan]

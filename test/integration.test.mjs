@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import https from 'node:https';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,6 +44,9 @@ test('real stdio MCP and pinned HTTPS: read, preview, permit, apply, restore, re
       ],
       { stdio: 'ignore', windowsHide: true },
     );
+    // OpenSSL creates public certificates with the process umask. The runtime
+    // deliberately requires owner-only storage even for its enrolled certificate.
+    if (process.platform !== 'win32') chmodSync(join(dir, 'router.pem'), 0o600);
     writePrivate(join(dir, 'router.pem'), readFileSync(join(dir, 'router.pem')));
     server = https.createServer(
       { key: readFileSync(join(dir, 'server.key')), cert: readFileSync(join(dir, 'router.pem')) },

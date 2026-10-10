@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { resolve, relative, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const roots = new Set(['.github', 'assets', 'docs', 'examples', 'scripts', 'spec', 'src', 'test']);
 const top = new Set([
@@ -56,6 +57,14 @@ for (const path of files) {
   const bytes = staged
     ? execFileSync('git', ['-C', root, 'show', ':' + path], { maxBuffer: 20 * 1024 * 1024 })
     : readFileSync(resolve(root, path));
+  if (path === 'assets/mcp-demo-redacted.png') {
+    if (
+      createHash('sha256').update(bytes).digest('hex') !==
+      'cb401c2bcee9a8a742adb0d0e7ac24c564dfed2ff30fc78c5e18e12574967b17'
+    )
+      findings.push(`${path}: unreviewed image content`);
+    continue;
+  }
   if (path === 'assets/unifi.ico') {
     if (bytes.readUInt32LE(0) !== 65536) findings.push(`${path}: unexpected icon format`);
     continue;

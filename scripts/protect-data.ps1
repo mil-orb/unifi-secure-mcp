@@ -10,7 +10,7 @@ foreach($entry in $items){if(($entry.Attributes -band [IO.FileAttributes]::Repar
 foreach($entry in $items){
     $acl=Get-Acl -LiteralPath $entry.FullName
     $acl.SetAccessRuleProtection($true,$false)
-    foreach($rule in @($acl.Access)){$acl.RemoveAccessRuleSpecific($rule)}
+    foreach($rule in @($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))){$acl.RemoveAccessRuleSpecific($rule)}
     $inherit=if($entry.PSIsContainer){[Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit'}else{[Security.AccessControl.InheritanceFlags]::None}
     $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid,'FullControl',$inherit,'None','Allow'))
     $entry.SetAccessControl($acl)

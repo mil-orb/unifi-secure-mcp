@@ -8,8 +8,10 @@ try {
     foreach($item in $items){
         if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Unsafe path.'}
         $acl=Get-Acl -LiteralPath $item.FullName
-        foreach($rule in $acl.Access){
-            if($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -notin $allowed){throw 'Unsafe permissions.'}
+        # Compare raw SIDs. Resolving account names can block on unavailable domain
+        # services when an MCP host starts the process with a minimal environment.
+        foreach($rule in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])){
+            if($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin $allowed){throw 'Unsafe permissions.'}
         }
     }
 }catch{[Console]::Error.WriteLine('Private storage permission validation failed.');exit 1}

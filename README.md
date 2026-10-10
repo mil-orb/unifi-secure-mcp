@@ -13,6 +13,12 @@
   <p><a href="docs/SETUP.md">Setup</a> · <a href="docs/OPERATIONS.md">All operations</a> · <a href="SECURITY.md">Security</a> · <a href="docs/API-VS-UI.md">API vs UI</a> · <a href="docs/AUDIT.md">Audit</a></p>
 </div>
 
+## Ask your network a question
+
+![Privacy-redacted example of a UniFi MCP conversation checking connected clients](assets/mcp-demo-redacted.png)
+
+*Edited, privacy-redacted illustration from an actual conversation. Device details, addresses, counts and timestamps are hidden. The response explicitly distinguishes current connections from unavailable first-seen history.*
+
 ## What you get
 
 - **Complete coverage of the bundled Network 10.6.106 specification:** 41 reads and 32 mutation operations, each exposed as a named, validated MCP tool.

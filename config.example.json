@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "baseUrl": "https://router.example.invalid",
+  "dataDir": "/absolute/path/outside/checkout/private",
+  "credentialStore": "file",
+  "writeEnabled": false
+}

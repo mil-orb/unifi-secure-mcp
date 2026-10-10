@@ -1,0 +1,29 @@
+{
+  "name": "unifi-secure-mcp",
+  "version": "0.2.0",
+  "description": "Local-first UniFi Network MCP with complete versioned API coverage, pinned TLS, and guarded writes.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "unifi-secure-mcp": "src/cli.mjs"
+  },
+  "scripts": {
+    "start": "node src/cli.mjs serve",
+    "setup": "node src/cli.mjs setup",
+    "test": "node --test test/*.test.mjs",
+    "check": "node scripts/check.mjs",
+    "verify": "node scripts/verify.mjs",
+    "privacy": "node scripts/privacy.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  },
+  "devDependencies": {
+    "prettier": "3.6.2"
+  }
+}

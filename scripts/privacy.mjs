@@ -7,6 +7,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const roots = new Set(['.github', 'assets', 'docs', 'examples', 'scripts', 'spec', 'src', 'test']);
 const top = new Set([
   '.gitignore',
+  '.gitattributes',
   '.prettierignore',
   '.prettierrc.json',
   'AGENTS.md',

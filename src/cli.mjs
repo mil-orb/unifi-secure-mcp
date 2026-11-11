@@ -42,9 +42,14 @@ async function prompts() {
   });
   return {
     async ask(question, { secret = false, fallback } = {}) {
-      process.stdout.write(question + (fallback !== undefined ? ` [${fallback}]` : '') + ': ');
+      // readline draws the prompt itself: in terminal mode it clears the current
+      // line first, which would erase a question written separately to stdout.
+      // question() draws synchronously, so muting starts after the prompt is shown.
+      const pending = rl.question(
+        question + (fallback !== undefined ? ` [${fallback}]` : '') + ': ',
+      );
       muted = secret;
-      const answer = await rl.question('');
+      const answer = await pending;
       muted = false;
       if (secret) process.stdout.write('\n');
       return answer.trim() || fallback || '';

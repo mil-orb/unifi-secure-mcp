@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { operations, spec, byId, validateInput, buildRequest, normalize } from '../src/catalog.mjs';
+import {
+  operations,
+  spec,
+  byId,
+  validateInput,
+  buildRequest,
+  normalize,
+  manifest,
+} from '../src/catalog.mjs';
 import { parseOrigin } from '../src/config.mjs';
 import { redact, assertBoundedJson } from '../src/security.mjs';
 import { renderInventory } from '../src/mermaid.mjs';
@@ -17,9 +25,10 @@ test('every documented operation is represented exactly once without executing i
       .map((o) => o.operationId),
   );
   assert.deepEqual(operations.map((o) => o.id).sort(), ids.sort());
-  assert.equal(ids.length, 73);
-  assert.equal(operations.filter((o) => o.readOnly).length, 41);
-  assert.equal(new Set(operations.map((o) => o.name)).size, 73);
+  const entry = manifest.find((e) => e.version === spec.info.version);
+  assert.equal(ids.length, entry.operations);
+  assert.equal(operations.filter((o) => o.readOnly).length, entry.reads);
+  assert.equal(new Set(operations.map((o) => o.name)).size, entry.operations);
 });
 test('origin and path validation reject alternate protocols, credentials and traversal', () => {
   for (const u of [

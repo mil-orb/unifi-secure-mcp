@@ -33,7 +33,11 @@ const update = (version, body) =>
   });
 
 test('every bundled spec compiles with counts and names matching the manifest', () => {
-  assert.deepEqual(bundledSpecs, ['10.6.106', '11.0.97', '11.1.47']);
+  for (const v of ['10.6.106', '11.0.97', '11.1.47']) assert.ok(bundledSpecs.includes(v), v);
+  assert.deepEqual(
+    bundledSpecs,
+    manifest.map((e) => e.version),
+  );
   for (const entry of manifest) {
     const c = catalog(entry.version);
     assert.equal(c.spec.info.version, entry.version);
@@ -94,9 +98,15 @@ test('selectSpecVersion prefers the newest spec not newer than the router; pin w
     [['11.0.97', '11.0.97'], { version: '11.0.97', match: 'exact' }],
     [[null, '10.6.106'], { version: '10.6.106', match: 'not-detected' }],
   ];
-  for (const [args, expected] of cases)
-    assert.deepEqual(selectSpecVersion(...args), expected, JSON.stringify(args));
-  assert.throws(() => selectSpecVersion('11.0.97', '9.9.9'), /SPEC_INVALID/);
+  // Fixed list so adding a bundled spec later does not change these expectations.
+  const bundled = ['10.6.106', '11.0.97', '11.1.47'];
+  for (const [[detected, pinned = null], expected] of cases)
+    assert.deepEqual(
+      selectSpecVersion(detected, pinned, bundled),
+      expected,
+      JSON.stringify([detected, pinned]),
+    );
+  assert.throws(() => selectSpecVersion('11.0.97', '9.9.9', bundled), /SPEC_INVALID/);
 });
 
 test('router version text is reduced to a numeric version or rejected', () => {

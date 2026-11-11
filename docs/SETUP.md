@@ -21,11 +21,30 @@ The default config is `~/.unifi-secure-mcp/config.json`. Select another using `-
 | `dataDir` | Absolute dedicated private directory outside the checkout |
 | `credentialStore` | `dpapi` on Windows; `file` on other platforms |
 | `writeEnabled` | `false` by default; `true` makes the apply tool available but does not grant a permit |
-| `toolsets` | Optional exact API tag names to expose; omission exposes all 73 operations |
+| `toolsets` | Optional exact API tag names to expose; omission exposes every operation of the loaded schema |
+| `specVersion` | Optional pin to one bundled schema version (for example `"11.0.97"`); must be listed in `spec/manifest.json` or startup fails with `CONFIG_INVALID` |
 
 `node src/cli.mjs operations` lists each operation's ID, tool name, tag and path. Use those exact tag strings for toolsets. Unknown tags fail startup. Toolset filtering is a presentation restriction; write enforcement also checks the local permit.
 
 Windows secrets are encrypted for the enrolling Windows user using DPAPI. Setup restricts private-directory ACLs; startup rejects unexpected allow entries in private storage. POSIX storage is an owner-only file, **not encrypted by this application**. Use OS encryption and appropriate account isolation. These controls do not defend against malware, elevated code, or an agent with unrestricted execution as the credential owner.
+
+## Network version detection
+
+The server bundles several UniFi Network API schemas, listed in `spec/manifest.json`. When the configuration is complete, it makes one read at startup (`getInfo`, `GET /v1/info`) to learn the router's Network version, then loads one bundled schema for the life of the process. It prefers the newest bundled schema that is **not newer** than the router: an older schema is a subset the router accepts, while a newer one could allow request fields the router rejects. Detection failure never stops startup; an unreachable router can delay it by up to the 15-second request deadline.
+
+| `match` | Meaning |
+| --- | --- |
+| `exact` | A bundled schema has the router's exact version |
+| `nearest-older` | The router is between two bundled versions of its major; the nearest older one is used |
+| `newer-than-bundled` | The router is newer than every bundled schema of its major; the newest of that major is used, and newer request fields are unavailable until a newer schema is added |
+| `older-than-bundled` | The router is older than every bundled schema of its major; the oldest of that major is used, and some accepted request fields may be rejected with HTTP 400 |
+| `major-mismatch` | No bundled schema shares the router's major version; the newest is used with a warning. Review every change with extra care |
+| `pinned` | `specVersion` is set and differs from the detected version |
+| `not-detected` | The version could not be read; the pin, or else the newest bundled schema, is used |
+
+`unifi_status` and the `unifi://capabilities` resource report `spec: { loaded, detected, match, bundled }`, and the server instructions name the loaded and detected versions. Restart MCP processes after a firmware upgrade so detection runs again.
+
+Set `specVersion` only to override detection, for example to stay on a schema you have already reviewed. A pin always wins over detection. To add a newer schema, download its `openapi.json` yourself, then run `node scripts/add-spec.mjs PATH --source URL` from the checkout (it never uses the network) and review the generated `docs/spec-changes/` report; see [CONTRIBUTING](../CONTRIBUTING.md).
 
 ## ChatGPT desktop/Work and Codex
 
@@ -72,7 +91,7 @@ Protect installed source and dependencies from less-trusted users as well as pro
 
 - **401/403:** expired/revoked key or insufficient UniFi permissions. Re-enroll locally; restart old processes. Do not print a key to diagnose it.
 - **TLS failure:** verify the configured origin, certificate and expiry. Re-enroll a changed certificate through an independently trusted channel. There is no insecure TLS flag.
-- **404/unsupported operation:** compare installed Network version and hardware with the pinned schema. Complete registration does not guarantee firmware support.
+- **404/unsupported operation:** compare the installed Network version and hardware with the loaded schema (`unifi_status` → `spec`). Complete registration does not guarantee firmware support.
 - **Unsafe storage:** repair ownership/ACLs, then restart. Do not weaken protection just to make startup pass.
 - **Stale plan:** re-read and review a fresh preview. The server cannot make its read/compare/write sequence atomic with the controller.
 - **Write uncertainty:** inspect the affected resource before deciding on manual recovery. Never retry automatically.

@@ -1,10 +1,10 @@
 # Security policy and threat model
 
-This is a single-user local STDIO MCP server for a security-critical network controller. It is not independently certified, audited by an external party, or guaranteed defect-free. Version 0.2.x targets the bundled Network 10.6.106 schema; update and re-review deliberately.
+This is a single-user local STDIO MCP server for a security-critical network controller. It is not independently certified, audited by an external party, or guaranteed defect-free. Version 0.3.x bundles the Network schemas listed in `spec/manifest.json` (each pinned by SHA-256) and loads the one closest to the version the router reports; `unifi_status` shows which. Add schemas only through `scripts/add-spec.mjs` and review its change report deliberately.
 
 ## Enforced boundaries
 
-- Named tools come exclusively from the bundled official specification. No generic request URL/method/header, browser, shell, SSH, or credential-retrieval tool exists.
+- Named tools come exclusively from the loaded bundled vendor specification. A schema construct the request validator does not understand fails `npm run check` and startup instead of being skipped. No generic request URL/method/header, browser, shell, SSH, or credential-retrieval tool exists.
 - Inputs use JSON Schema validation, discriminator-aware request schemas, bounded nesting/body size, exact path parameters, encoded query values, and rejected extra fields.
 - Authenticated traffic uses one locally configured HTTPS origin, a trusted pinned certificate, TLS 1.2+, certificate validity checks, no redirect following, and no write retry.
 - Credentials are loaded inside the server and never returned intentionally. Responses redact sensitive field names and exact loaded secret values; upstream error bodies are suppressed.

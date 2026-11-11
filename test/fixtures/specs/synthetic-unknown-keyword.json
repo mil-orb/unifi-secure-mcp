@@ -1,0 +1,36 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Synthetic widget API with an unsupported keyword (test fixture)", "version": "11.1.100" },
+  "paths": {
+    "/v1/sites/{siteId}/widgets": {
+      "post": {
+        "operationId": "createWidget",
+        "tags": ["Widgets"],
+        "summary": "Create a widget",
+        "parameters": [
+          { "name": "siteId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Widget" } } }
+        },
+        "responses": { "201": { "description": "Created" } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Widget": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "mode": { "type": "string", "enum": ["PORT", "ANY"] },
+          "port": { "type": "integer", "format": "int32" }
+        },
+        "if": { "properties": { "mode": { "const": "PORT" } } },
+        "then": { "required": ["port"] }
+      }
+    }
+  }
+}

@@ -7,11 +7,11 @@ const fail = () => {
   throw new Error('SPEC_INVALID');
 };
 const semver = /^(\d{1,4})\.(\d{1,4})\.(\d{1,6})$/;
-const parseVersion = (v) => {
+export const parseVersion = (v) => {
   const m = typeof v === 'string' && semver.exec(v);
   return m ? m.slice(1).map(Number) : null;
 };
-function compareVersions(a, b) {
+export function compareVersions(a, b) {
   const x = parseVersion(a),
     y = parseVersion(b);
   for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i];
@@ -22,10 +22,12 @@ export function versionFrom(value) {
   const m = typeof value === 'string' && /^(\d{1,4}\.\d{1,4}\.\d{1,6})(?!\d)/.exec(value);
   return m ? m[1] : null;
 }
-function readManifest() {
+// Bundled specs live only here; tooling may pass another directory URL (with a trailing slash).
+export const SPEC_DIR = new URL('../spec/', import.meta.url);
+export function readManifest(dir = SPEC_DIR) {
   let data;
   try {
-    data = JSON.parse(readFileSync(new URL('../spec/manifest.json', import.meta.url), 'utf8'));
+    data = JSON.parse(readFileSync(new URL('manifest.json', dir), 'utf8'));
   } catch {
     fail();
   }
@@ -51,11 +53,11 @@ function readManifest() {
 export const manifest = readManifest();
 export const bundledSpecs = Object.freeze(manifest.map((e) => e.version));
 // Reads a bundled spec only from spec/, verifying the manifest SHA-256 before parsing.
-export function loadSpec(entry) {
+export function loadSpec(entry, dir = SPEC_DIR) {
   if (!parseVersion(entry?.version) || entry.file !== `unifi-network-${entry.version}.json`) fail();
   let bytes, parsed;
   try {
-    bytes = readFileSync(new URL(`../spec/${entry.file}`, import.meta.url));
+    bytes = readFileSync(new URL(entry.file, dir));
   } catch {
     fail();
   }
@@ -184,6 +186,150 @@ ajv.addFormat('int32', {
 });
 ajv.addFormat('int64', { type: 'number', validate: Number.isSafeInteger });
 ajv.addFormat('double', { type: 'number', validate: Number.isFinite });
+// Schema keywords normalize() implements, and annotations it may safely drop.
+const UNDERSTOOD = new Set([
+  '$ref',
+  'allOf',
+  'oneOf',
+  'anyOf',
+  'discriminator',
+  'type',
+  'enum',
+  'const',
+  'minimum',
+  'maximum',
+  'exclusiveMinimum',
+  'exclusiveMaximum',
+  'minLength',
+  'maxLength',
+  'pattern',
+  'format',
+  'minItems',
+  'maxItems',
+  'uniqueItems',
+  'required',
+  'default',
+  'properties',
+  'additionalProperties',
+  'items',
+  'nullable',
+  'readOnly',
+]);
+const ANNOTATIONS = new Set([
+  'title',
+  'description',
+  'example',
+  'examples',
+  'deprecated',
+  'writeOnly',
+  'externalDocs',
+  '$comment',
+]);
+// flatten() merges only these from an allOf member; anything else would be dropped.
+const ALLOF_MERGED = new Set(['$ref', 'allOf', 'type', 'properties', 'required', 'discriminator']);
+const TYPES = new Set(['object', 'array', 'string', 'number', 'integer', 'boolean', 'null']);
+const SCHEMA_REF = '#/components/schemas/';
+const pointer = (parts) =>
+  '#/' + parts.map((p) => String(p).replace(/~/g, '~0').replace(/\//g, '~1')).join('/');
+// Lists every construct buildCatalog()/normalize() would not enforce faithfully, as
+// "JSON-pointer: reason". An empty list means the spec is safe to compile.
+export function auditSpec(source) {
+  const findings = [];
+  const add = (parts, reason) => findings.push(`${pointer(parts)}: ${reason}`);
+  const schemas = source?.components?.schemas;
+  if (!schemas || typeof schemas !== 'object') return ['#/components/schemas: missing'];
+  const target = (ref) => {
+    if (typeof ref !== 'string' || !ref.startsWith(SCHEMA_REF)) return undefined;
+    const name = decodeURIComponent(ref.slice(SCHEMA_REF.length))
+      .replace(/~1/g, '/')
+      .replace(/~0/g, '~');
+    return Object.hasOwn(schemas, name) ? schemas[name] : undefined;
+  };
+  const ignorable = (k) => k.startsWith('x-') || ANNOTATIONS.has(k);
+  const allOfMember = (member, parts) => {
+    const seen = new Set();
+    for (let m = member; m && typeof m === 'object'; m = target(m.$ref)) {
+      for (const k of Object.keys(m))
+        if (!ignorable(k) && !ALLOF_MERGED.has(k))
+          add(parts, `keyword "${k}" inside an allOf member is dropped by normalize()`);
+      if (!m.$ref || seen.has(m.$ref)) break;
+      seen.add(m.$ref);
+    }
+  };
+  const visit = (schema, parts) => {
+    if (!schema || typeof schema !== 'object' || Array.isArray(schema))
+      return add(parts, 'schema must be an object');
+    for (const [k, v] of Object.entries(schema)) {
+      const at = [...parts, k];
+      if (ignorable(k)) continue;
+      if (!UNDERSTOOD.has(k)) {
+        add(at, `unsupported schema keyword "${k}"`);
+        continue;
+      }
+      if (k === '$ref' && !target(v)) add(at, 'unresolvable or non-schema $ref');
+      else if (k === 'type' && ![v].flat().every((t) => TYPES.has(t))) add(at, 'unknown type');
+      else if (k === 'format' && (typeof v !== 'string' || !Object.hasOwn(ajv.formats, v)))
+        add(at, `unsupported format "${v}"`);
+      else if (k === 'discriminator') {
+        if (!v || typeof v.propertyName !== 'string' || !v.mapping || typeof v.mapping !== 'object')
+          add(at, 'discriminator needs propertyName and mapping');
+        else {
+          for (const dk of Object.keys(v))
+            if (!['propertyName', 'mapping'].includes(dk) && !dk.startsWith('x-'))
+              add([...at, dk], `unsupported discriminator keyword "${dk}"`);
+          for (const [value, ref] of Object.entries(v.mapping))
+            if (!target(ref)) add([...at, 'mapping', value], 'unresolvable mapping $ref');
+        }
+      } else if (k === 'properties') {
+        if (!v || typeof v !== 'object') add(at, 'properties must be an object');
+        else for (const [name, child] of Object.entries(v)) visit(child, [...at, name]);
+      } else if (k === 'items') visit(v, at);
+      else if (k === 'additionalProperties' && typeof v !== 'boolean') visit(v, at);
+      else if (['allOf', 'oneOf', 'anyOf'].includes(k)) {
+        if (!Array.isArray(v)) add(at, `${k} must be an array`);
+        else
+          v.forEach((child, i) => {
+            visit(child, [...at, i]);
+            if (k === 'allOf') allOfMember(child, [...at, i]);
+          });
+      }
+    }
+  };
+  for (const [name, schema] of Object.entries(schemas))
+    visit(schema, ['components', 'schemas', name]);
+  for (const [path, item] of Object.entries(source.paths || {})) {
+    const params = (list, parts) =>
+      (list || []).forEach((p, i) => {
+        if (!p || !['path', 'query'].includes(p.in) || typeof p.name !== 'string' || !p.schema)
+          add([...parts, i], 'parameter must be an inline path/query parameter with a schema');
+        else visit(p.schema, [...parts, i, 'schema']);
+      });
+    params(item.parameters, ['paths', path, 'parameters']);
+    for (const [method, op] of Object.entries(item)) {
+      if (!['get', 'post', 'put', 'patch', 'delete'].includes(method) || !op?.operationId) continue;
+      params(op.parameters, ['paths', path, method, 'parameters']);
+      if (op.requestBody) {
+        const schema = op.requestBody.content?.['application/json']?.schema;
+        if (!schema)
+          add(
+            ['paths', path, method, 'requestBody'],
+            'request body must be inline application/json',
+          );
+        else
+          visit(schema, [
+            'paths',
+            path,
+            method,
+            'requestBody',
+            'content',
+            'application/json',
+            'schema',
+          ]);
+      }
+    }
+  }
+  return findings;
+}
 const snake = (s) => s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
 export function buildCatalog(source) {
   const schemas = source.components.schemas;
@@ -244,6 +390,7 @@ export function compileSpec(version) {
   const entry = manifest.find((e) => e.version === version);
   if (!entry) fail();
   const loaded = loadSpec(entry);
+  if (auditSpec(loaded).length) fail();
   const catalog = buildCatalog(loaded);
   const reads = catalog.operations.filter((o) => o.readOnly).length;
   if (

@@ -33,3 +33,7 @@ Review evidence is recorded in test results and dependency audit output at relea
 - Private-storage ACL validation passed after inherited sandbox access was removed from migrated files.
 - Staged-source checks found no deployment secrets or identifiers; the bundled schema was independently compared with the public vendor source to distinguish vendor examples from private data.
 - Hosted CI is configured separately; consult the actual workflow result rather than inferring its outcome from these local checks.
+
+## Update note, 2026-11-10 (version 0.3.0)
+
+This note does not change the 0.2.0 evidence above, which still describes Network 10.6.106 only. Version 0.3.0 bundles the 10.6.106, 11.0.97 and 11.1.47 specifications and selects one per router at startup. Local checks for this version: `npm run check` (all bundled specifications hash-verified, keyword-guarded and compiled, counts from the manifest), `npm test` and `npm run privacy` pass on Windows with Node 24. `npm audit` on 2026-11-10 reported advisories in transitive dependencies (one high: body-parser; moderate: fast-uri, ip-address, qs, zod) that predate this version and are not yet resolved. Not yet done for 0.3.0: live reads against a router running Network 11.x, a fresh review of this document's table, and an official copy of the 11.1.47 specification (the bundled one is a public mirror copy).

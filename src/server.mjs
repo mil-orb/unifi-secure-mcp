@@ -44,7 +44,7 @@ const specWarnings = {
   'nearest-older':
     '; the router is between bundled schema versions, so the nearest older one is used',
   'newer-than-bundled':
-    '; the router is newer than every bundled schema of its major version, so newer request fields are unavailable until a newer schema is bundled',
+    '; the router is newer than every bundled schema of its major version, so newer request fields are unavailable until a newer schema is bundled with scripts/add-spec.mjs',
   'older-than-bundled':
     '; the router is older than every bundled schema of its major version, so some request fields this schema accepts may be rejected with HTTP 400',
   'major-mismatch':

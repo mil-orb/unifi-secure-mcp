@@ -1,0 +1,79 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Synthetic widget API (test fixture)", "version": "11.1.0" },
+  "paths": {
+    "/v1/sites/{siteId}/widgets": {
+      "get": {
+        "operationId": "getWidgetPage",
+        "tags": ["Widgets"],
+        "summary": "List widgets",
+        "parameters": [
+          { "name": "siteId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "format": "int32", "minimum": 1, "maximum": 200 } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      },
+      "post": {
+        "operationId": "createWidget",
+        "tags": ["Widgets"],
+        "summary": "Create a widget",
+        "parameters": [
+          { "name": "siteId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Widget" } } }
+        },
+        "responses": { "201": { "description": "Created" } }
+      }
+    },
+    "/v1/sites/{siteId}/widgets/{widgetId}": {
+      "put": {
+        "operationId": "updateWidget",
+        "tags": ["Widgets"],
+        "summary": "Replace a widget",
+        "parameters": [
+          { "name": "siteId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "widgetId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Widget" } } }
+        },
+        "responses": { "200": { "description": "OK" } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Widget": {
+        "type": "object",
+        "required": ["name", "filter"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 64, "example": "Example widget" },
+          "enabled": { "type": "boolean", "description": "Whether the widget is active." },
+          "filter": { "$ref": "#/components/schemas/WidgetFilter" }
+        }
+      },
+      "WidgetFilter": {
+        "type": "object",
+        "required": ["type"],
+        "properties": { "type": { "type": "string" } },
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": { "PORT": "#/components/schemas/PortWidgetFilter" }
+        }
+      },
+      "PortWidgetFilter": {
+        "allOf": [
+          { "$ref": "#/components/schemas/WidgetFilter" },
+          {
+            "type": "object",
+            "required": ["port"],
+            "properties": { "port": { "type": "integer", "format": "int32", "minimum": 1, "maximum": 65535 } }
+          }
+        ]
+      }
+    }
+  }
+}

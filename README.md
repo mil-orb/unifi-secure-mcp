@@ -5,7 +5,7 @@
   <p>A local MCP bridge to the official UniFi Network API, built with the UDR7 in mind.</p>
   <p>
     <img alt="MCP stdio" src="https://img.shields.io/badge/MCP-stdio-0ea5e9">
-    <img alt="73 API operations" src="https://img.shields.io/badge/API_operations-73-2563eb">
+    <img alt="API operations: generated" src="https://img.shields.io/badge/API_operations-generated-2563eb">
     <img alt="Read-only default" src="https://img.shields.io/badge/default-read--only-16a34a">
     <img alt="Node 24 or newer" src="https://img.shields.io/badge/Node.js-24%2B-43853d">
     <img alt="Unofficial" src="https://img.shields.io/badge/Ubiquiti-unofficial-64748b">
@@ -21,7 +21,7 @@
 
 ## What you get
 
-- **Complete coverage of the bundled Network 10.6.106 specification:** 41 reads and 32 mutation operations, each exposed as a named, validated MCP tool.
+- **Complete coverage of every bundled Network specification:** each read and mutation operation is exposed as a named, validated MCP tool. The bundled versions and their operation counts are listed in [`spec/manifest.json`](spec/manifest.json) and [the operations list](docs/OPERATIONS.md). At startup the server loads the bundled specification that best matches your router; `unifi_status` shows which one.
 - **Read-only execution by default.** Mutation tools prepare five-minute previews. Execution additionally requires write-capable setup, a short-lived operation/site permit, and explicit review.
 - **Local credentials and pinned TLS.** Hidden key input; Windows current-user DPAPI; no credential tool arguments, public MCP endpoint, telemetry, or browser automation.
 - **MCP tools, resources, and prompts.** Structured JSON results, descriptive schemas, annotations, capability discovery, troubleshooting prompts, and safe Mermaid inventory output.
@@ -35,7 +35,7 @@ This project is an **unofficial integration**, unaffiliated with Ubiquiti or Ope
 
 - Node.js **24 or newer**, including npm (`node --version` and `npm --version`).
 - Git, plus access to this private repository. Sign in to the authorized GitHub account if the repository page shows a login screen or 404.
-- Local HTTPS access to your UniFi console and a supported Network application. This release targets **UDR7 / Network 10.6.106**.
+- Local HTTPS access to your UniFi console and a supported Network application. This release targets the **UDR7** and the UniFi Network versions listed in [`spec/manifest.json`](spec/manifest.json); other versions get the closest bundled schema (see [version detection](docs/SETUP.md#network-version-detection)).
 - A dedicated, expiring UniFi API key created through UniFi's trusted local setup workflow. Prefer restricted permissions when available.
 - On Windows: built-in Windows PowerShell for DPAPI. PowerShell 7 is needed only for the optional installation-hardening script. Tests additionally need OpenSSL; Git for Windows normally supplies it.
 
@@ -106,7 +106,7 @@ flowchart LR
     R --> H
 ```
 
-There is no arbitrary URL, raw HTTP, shell, or browser tool. Tools are generated from the bundled official schema and inputs are validated again before transmission. A request outside the supported API produces an explicit limitation.
+There is no arbitrary URL, raw HTTP, shell, or browser tool. Tools are generated from the bundled vendor schema that matches the router, and inputs are validated again before transmission. A request outside the supported API produces an explicit limitation.
 
 ## Coverage
 

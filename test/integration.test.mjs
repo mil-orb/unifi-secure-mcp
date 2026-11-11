@@ -12,6 +12,7 @@ import { writePrivate, secureDirectory, storeSecret } from '../src/storage.mjs';
 import { grant, revoke } from '../src/permits.mjs';
 import { UniFiClient } from '../src/client.mjs';
 import { messages } from '../src/security.mjs';
+import { bundledSpecs } from '../src/catalog.mjs';
 const id = '00000000-0000-4000-8000-000000000001';
 const original = { management: 'UNMANAGED', name: 'Example lab', enabled: false, vlanId: 20 };
 const openssl =
@@ -135,7 +136,7 @@ test('real stdio MCP and pinned HTTPS: read, preview, permit, apply, restore, re
         loaded: '11.0.97',
         detected: '11.0.97',
         match: 'exact',
-        bundled: ['10.6.106', '11.0.97', '11.1.47'],
+        bundled: [...bundledSpecs],
       });
       assert.equal(status.schemaVersion, '11.0.97');
       const capabilities = JSON.parse(
@@ -237,7 +238,7 @@ test('failed version detection still starts, lists tools and falls back to the p
         loaded: '11.0.97',
         detected: null,
         match: 'not-detected',
-        bundled: ['10.6.106', '11.0.97', '11.1.47'],
+        bundled: [...bundledSpecs],
       });
       assert.match(client.getInstructions(), /detection failed/);
       assert.deepEqual(

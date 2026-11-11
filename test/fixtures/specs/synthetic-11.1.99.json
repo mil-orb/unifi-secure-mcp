@@ -1,0 +1,110 @@
+{
+  "openapi": "3.1.1",
+  "info": { "title": "Synthetic widget API (test fixture)", "version": "11.1.99" },
+  "paths": {
+    "/v1/sites/{siteId}/widgets": {
+      "get": {
+        "operationId": "getWidgetPage",
+        "tags": ["Widgets"],
+        "summary": "List widgets",
+        "parameters": [
+          { "name": "siteId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "format": "int32", "minimum": 1, "maximum": 200 } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      },
+      "post": {
+        "operationId": "createWidget",
+        "tags": ["Widgets"],
+        "summary": "Create a widget",
+        "parameters": [
+          { "name": "siteId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Widget" } } }
+        },
+        "responses": { "201": { "description": "Created" } }
+      }
+    },
+    "/v1/sites/{siteId}/widgets/{widgetId}": {
+      "put": {
+        "operationId": "updateWidget",
+        "tags": ["Widgets"],
+        "summary": "Replace a widget",
+        "parameters": [
+          { "name": "siteId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "widgetId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Widget" } } }
+        },
+        "responses": { "200": { "description": "OK" } }
+      },
+      "delete": {
+        "operationId": "deleteWidget",
+        "tags": ["Widgets"],
+        "summary": "Delete a widget",
+        "parameters": [
+          { "name": "siteId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "widgetId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": { "204": { "description": "Deleted" } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Widget": {
+        "type": "object",
+        "required": ["name", "filter", "zoneId"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 64, "example": "Example widget" },
+          "enabled": { "type": "boolean", "description": "Whether the widget is active." },
+          "zoneId": { "type": "string", "format": "uuid", "description": "Zone the widget belongs to." },
+          "reportActivity": {
+            "type": "boolean",
+            "description": "Report widget activity in Insights. Defaults to true when omitted."
+          },
+          "filter": { "$ref": "#/components/schemas/WidgetFilter" }
+        }
+      },
+      "WidgetFilter": {
+        "type": "object",
+        "required": ["type"],
+        "properties": { "type": { "type": "string" } },
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "PORT": "#/components/schemas/PortWidgetFilter",
+            "RANGE": "#/components/schemas/RangeWidgetFilter"
+          }
+        }
+      },
+      "PortWidgetFilter": {
+        "allOf": [
+          { "$ref": "#/components/schemas/WidgetFilter" },
+          {
+            "type": "object",
+            "required": ["port"],
+            "properties": { "port": { "type": "integer", "format": "int32", "minimum": 1, "maximum": 65535 } }
+          }
+        ]
+      },
+      "RangeWidgetFilter": {
+        "allOf": [
+          { "$ref": "#/components/schemas/WidgetFilter" },
+          {
+            "type": "object",
+            "required": ["start", "stop"],
+            "properties": {
+              "start": { "type": "integer", "format": "int32", "minimum": 1, "maximum": 65535 },
+              "stop": { "type": "integer", "format": "int32", "minimum": 1, "maximum": 65535 }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

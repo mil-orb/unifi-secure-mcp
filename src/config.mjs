@@ -3,6 +3,7 @@ import { resolve, dirname, isAbsolute } from 'node:path';
 import { readFileSync, existsSync, lstatSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { bundledSpecs } from './catalog.mjs';
 export const defaultConfigPath = () => resolve(homedir(), '.unifi-secure-mcp', 'config.json');
 export function parseOrigin(value) {
   let url;
@@ -32,7 +33,15 @@ export function loadConfig(path = process.env.UNIFI_MCP_CONFIG || defaultConfigP
   } catch {
     throw new Error('CONFIG_INVALID');
   }
-  const allowed = ['version', 'baseUrl', 'dataDir', 'credentialStore', 'writeEnabled', 'toolsets'];
+  const allowed = [
+    'version',
+    'baseUrl',
+    'dataDir',
+    'credentialStore',
+    'writeEnabled',
+    'toolsets',
+    'specVersion',
+  ];
   if (
     Object.keys(data).some((k) => !allowed.includes(k)) ||
     data.version !== 1 ||
@@ -40,7 +49,8 @@ export function loadConfig(path = process.env.UNIFI_MCP_CONFIG || defaultConfigP
     !['dpapi', 'file'].includes(data.credentialStore) ||
     typeof data.writeEnabled !== 'boolean' ||
     (data.toolsets !== undefined &&
-      (!Array.isArray(data.toolsets) || !data.toolsets.every((t) => typeof t === 'string')))
+      (!Array.isArray(data.toolsets) || !data.toolsets.every((t) => typeof t === 'string'))) ||
+    (data.specVersion !== undefined && !bundledSpecs.includes(data.specVersion))
   )
     throw new Error('CONFIG_INVALID');
   if (data.credentialStore === 'dpapi' && process.platform !== 'win32')

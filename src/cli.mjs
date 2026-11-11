@@ -10,7 +10,8 @@ import { defaultConfigPath, loadConfig, parseOrigin, dataFile } from './config.m
 import { secureDirectory, writePrivate, storeSecret } from './storage.mjs';
 import { grant, revoke, policy } from './permits.mjs';
 import { safeError } from './security.mjs';
-import { operations, spec } from './catalog.mjs';
+import { operations, spec, bundledSpecs } from './catalog.mjs';
+import { version } from './version.mjs';
 import { UniFiClient } from './client.mjs';
 import { serve } from './server.mjs';
 const { values, positionals } = parseArgs({
@@ -85,7 +86,7 @@ async function setup() {
   const p = await prompts();
   try {
     console.log(
-      'UniFi Secure MCP · local setup · unofficial Ubiquiti integration\nDesigned and verified with UDR7 / Network 10.6.106. No remote MCP listener is installed.\nNever paste credentials into a chat. Setup accepts your key only through hidden local input.',
+      `UniFi Secure MCP ${version} · local setup · unofficial Ubiquiti integration\nBundled Network API schemas: ${bundledSpecs.join(', ')}; the closest match to the router's reported version is selected at startup. No remote MCP listener is installed.\nNever paste credentials into a chat. Setup accepts your key only through hidden local input.`,
     );
     let existing;
     if (existsSync(configPath)) {
@@ -151,7 +152,7 @@ async function setup() {
 }
 try {
   if (values.version) {
-    console.log('unifi-secure-mcp 0.2.0');
+    console.log(`unifi-secure-mcp ${version}`);
   } else if (values.help || positionals[0] === 'help') {
     console.log(
       'unifi-secure-mcp <serve|setup|status|operations|permit|revoke|secret> [--config ABSOLUTE_PATH]\n\nsetup       Guided certificate/key/access setup (interactive terminal)\nserve       MCP over STDIO; protocol output only\nstatus      Local access and readiness information\noperations  All operations in the pinned API schema\npermit      --site UUID --operation OPERATION_ID [--minutes 15] (flags repeatable)\nrevoke      Disable all writes immediately\nsecret      --name NAME (hidden local input; use @secret:NAME in request bodies)\n\nDefault: read-only. No insecure TLS flag or credential command-line option.',

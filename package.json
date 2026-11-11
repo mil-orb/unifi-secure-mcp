@@ -1,6 +1,6 @@
 {
   "name": "unifi-secure-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Local-first UniFi Network MCP with complete versioned API coverage, pinned TLS, and guarded writes.",
   "type": "module",
   "private": true,

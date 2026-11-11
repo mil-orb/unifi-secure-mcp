@@ -4,6 +4,7 @@ import { buildRequest, byId } from './catalog.mjs';
 import { assertPrivateFile, dataFile } from './config.mjs';
 import { certificateOptions, redact } from './security.mjs';
 import { readSecret } from './storage.mjs';
+import { version } from './version.mjs';
 export class UniFiClient {
   constructor(
     config,
@@ -78,7 +79,7 @@ export class UniFiClient {
             headers: {
               Accept: 'application/json',
               'X-API-Key': key,
-              'User-Agent': 'unifi-secure-mcp/0.2.0',
+              'User-Agent': `unifi-secure-mcp/${version}`,
               ...(payload === undefined
                 ? {}
                 : {

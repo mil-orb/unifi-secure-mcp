@@ -1,23 +1,36 @@
 import { X509Certificate, timingSafeEqual, createHash } from 'node:crypto';
+export const REDACTED = '[REDACTED]';
 const secretKey =
   /password|passphrase|preshared|privatekey|secret|token|credential|certificate|authorization|apikey|psk|^key$|^pin$/i;
+// Documented non-secret fields that secretKey would otherwise hide: guest-authorization
+// metadata (timestamps, limits, usage) and Wi-Fi network references.
+const notSecret = new Set([
+  'authorizationmethod',
+  'grantedauthorization',
+  'revokedauthorization',
+  'presharedkeynetworkids',
+]);
+const isSecretKey = (k) => {
+  const name = k.replace(/[^a-z0-9]/gi, '');
+  return secretKey.test(name) && !notSecret.has(name.toLowerCase());
+};
 export function redact(value, secrets = []) {
   if (Array.isArray(value)) return value.map((v) => redact(v, secrets));
   if (value && typeof value === 'object')
     return Object.fromEntries(
       Object.entries(value).map(([k, v]) => [
         k,
-        secretKey.test(k.replace(/[^a-z0-9]/gi, '')) ||
+        isSecretKey(k) ||
         (k === 'code' &&
           ['authorizedGuestCount', 'authorizedGuestLimit', 'timeLimitMinutes'].some((field) =>
             Object.hasOwn(value, field),
           ))
-          ? '[REDACTED]'
+          ? REDACTED
           : redact(v, secrets),
       ]),
     );
   if (typeof value === 'string')
-    for (const key of secrets) if (key) value = value.replaceAll(key, '[REDACTED]');
+    for (const key of secrets) if (key) value = value.replaceAll(key, REDACTED);
   return value;
 }
 export function assertBoundedJson(value, depth = 0) {
@@ -69,6 +82,8 @@ export const messages = {
     'Secure connection failed. Check the router address and enrolled certificate; do not disable verification.',
   TIMEOUT: 'The router request timed out.',
   INPUT_INVALID: 'Input does not match the documented operation schema or safety limits.',
+  REDACTED_VALUE:
+    'A redacted value ([REDACTED]) cannot be sent. Omit the field if the API allows it, or reference a locally stored secret as @secret:NAME.',
   RESPONSE_INVALID: 'The router returned an invalid or oversized response.',
   READ_ONLY:
     'Write execution is disabled or this operation/site is outside the active local permit.',

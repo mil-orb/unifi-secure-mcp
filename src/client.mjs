@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { buildRequest, byId } from './catalog.mjs';
 import { assertPrivateFile, dataFile } from './config.mjs';
 import { certificateOptions, redact } from './security.mjs';
-import { readSecret } from './storage.mjs';
+import { readSecret, reservedSecretName } from './storage.mjs';
 import { version } from './version.mjs';
 export class UniFiClient {
   constructor(
@@ -28,6 +28,8 @@ export class UniFiClient {
     if (value && typeof value === 'object')
       return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, this.resolveSecrets(v)]));
     if (typeof value === 'string' && value.startsWith('@secret:')) {
+      // The UniFi API key must never be copied into router configuration.
+      if (reservedSecretName(value.slice(8))) throw new Error('INPUT_INVALID');
       const secret = readSecret(this.config, value.slice(8));
       this.secrets.add(secret);
       return secret;

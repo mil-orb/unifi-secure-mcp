@@ -24,13 +24,13 @@ The default config is `~/.unifi-secure-mcp/config.json`. Select another using `-
 | `toolsets` | Optional exact API tag names to expose; omission exposes every operation of the loaded schema |
 | `specVersion` | Optional pin to one bundled schema version (for example `"11.0.97"`); must be listed in `spec/manifest.json` or startup fails with `CONFIG_INVALID` |
 
-`node src/cli.mjs operations` lists each operation's ID, tool name, tag and path. Use those exact tag strings for toolsets. Unknown tags fail startup. Toolset filtering is a presentation restriction; write enforcement also checks the local permit.
+`node src/cli.mjs operations` lists each operation's ID, tool name, tag and path. Use those exact tag strings for toolsets. Unknown tags fail startup. Toolset filtering is a presentation restriction; write enforcement also checks the local permit. Helper tools that read through several tags (`unifi_mermaid`, `unifi_explain_path`) are offered only when the toolsets expose every operation they read; otherwise they are not listed and calls to them fail.
 
 Windows secrets are encrypted for the enrolling Windows user using DPAPI. Setup restricts private-directory ACLs; startup rejects unexpected allow entries in private storage. POSIX storage is an owner-only file, **not encrypted by this application**. Use OS encryption and appropriate account isolation. These controls do not defend against malware, elevated code, or an agent with unrestricted execution as the credential owner.
 
 ## Network version detection
 
-The server bundles several UniFi Network API schemas, listed in `spec/manifest.json`. When the configuration is complete, it makes one read at startup (`getInfo`, `GET /v1/info`) to learn the router's Network version, then loads one bundled schema for the life of the process. It prefers the newest bundled schema that is **not newer** than the router: an older schema is a subset the router accepts, while a newer one could allow request fields the router rejects. Detection failure never stops startup; an unreachable router can delay it by up to the 15-second request deadline.
+The server bundles several UniFi Network API schemas, listed in `spec/manifest.json`. When the configuration is complete, it makes one read at startup (`getInfo`, `GET /v1/info`) to learn the router's Network version, then loads one bundled schema for the life of the process. It prefers the newest bundled schema that is **not newer** than the router: an older schema is a subset the router accepts, while a newer one could allow request fields the router rejects. Detection failure never stops startup; an unreachable router can delay it by up to the 15-second request deadline. `serve --no-detect` skips this read (match `not-detected`); `npm run verify` uses it unless `--live` is given, so non-live verification never contacts the router.
 
 | `match` | Meaning |
 | --- | --- |
@@ -81,7 +81,7 @@ Use actual IDs from your own MCP reads. Repeat `--site` or `--operation` only wh
 
 Apply once, read back state, then `node src/cli.mjs revoke`. Revocation blocks the next authorization check; it cannot cancel a request already sent. Keep independent management access for changes that can disconnect the MCP host.
 
-For a Wi-Fi password or other string secret, use `node src/cli.mjs secret --name wifi_password`. The hidden prompt stores it locally; use `@secret:wifi_password` in the relevant request body. Secret references cannot appear in URLs, paths, or queries. Never use a redacted response as a replacement request: provide all required documented fields, and supply unchanged secret fields through local slots where needed.
+For a Wi-Fi password or other string secret, use `node src/cli.mjs secret --name wifi_password`. The hidden prompt stores it locally; use `@secret:wifi_password` in the relevant request body. Secret references cannot appear in URLs, paths, or queries. Never use a redacted response as a replacement request: provide all required documented fields, and supply unchanged secret fields through local slots where needed. A body containing `[REDACTED]` is refused with `REDACTED_VALUE`. `api-key` is reserved: it cannot be stored as a slot or referenced as `@secret:api-key`, in any letter case.
 
 ## Filesystem hardening
 

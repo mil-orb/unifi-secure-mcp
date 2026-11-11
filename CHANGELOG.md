@@ -14,6 +14,15 @@
 - New read-only MCP prompt `unifi_iot_audit` (arguments `network`, `trustedHosts`, `dnsServer`, `expectInternet`; each capped at 512 characters, JSON-escaped and labelled as user-provided data): checks spec match, network and Wi-Fi isolation/mDNS/multicast settings, the zone's policies, and a `unifi_explain_path` flow matrix; outputs one pass/fail/undetermined table and proposes fixes only.
 - Dependency update: `npm audit fix` (lockfile only, no major or direct-range changes) moved body-parser to 2.4.0, zod to 4.6.7, fast-uri to 3.1.9, ip-address to 10.7.6 and qs to 6.17.1, clearing all `npm audit` advisories.
 
+### Review R1 fixes
+
+- Request bodies containing the redaction marker `[REDACTED]` are refused (`REDACTED_VALUE`), and the server instructions and `unifi_change_review` prompt now say to omit redacted fields or use `@secret:NAME`, and to drop read-only fields such as `id` and `metadata`.
+- `@secret:api-key` is refused in any letter case; the `secret` command's reserved-name check is now case-insensitive.
+- `allOf` property declarations are intersected instead of the first one winning, restoring validation of ACL source/destination filters, Wi-Fi `radiusConfiguration` and DNS `domain` length on every bundled schema.
+- `serve --no-detect` skips the startup version read; `npm run verify` uses it unless `--live` is given.
+- `unifi_mermaid` and `unifi_explain_path` are offered only when `toolsets` (if set) expose every operation they read.
+- Redaction no longer hides `authorizationMethod`, `grantedAuthorization`, `revokedAuthorization` or `presharedKeyNetworkIds`.
+
 ## 0.2.0
 
 - Implemented all 73 operations from the official Network 10.6.106 specification as individually validated MCP tools.

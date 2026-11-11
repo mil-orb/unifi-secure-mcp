@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import Ajv from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
-import { assertBoundedJson } from './security.mjs';
+import { assertBoundedJson, REDACTED } from './security.mjs';
 const fail = () => {
   throw new Error('SPEC_INVALID');
 };
@@ -79,6 +79,21 @@ function dereference(ref, schemas) {
   if (!Object.hasOwn(schemas, name)) throw new Error('SPEC_INVALID');
   return schemas[name];
 }
+// A property declared by several allOf members must satisfy every declaration.
+// UniFi bases often declare a placeholder ({} or a description) that a later member
+// refines, so a constraint-free declaration yields to the other one; two object
+// declarations merge as allOf (recursively); two other declarations are intersected.
+const constraintFree = (s) => Object.keys(s).every((k) => k.startsWith('x-') || ANNOTATIONS.has(k));
+function mergeProperty(a, b, schemas) {
+  if (JSON.stringify(a) === JSON.stringify(b) || constraintFree(b)) return a;
+  if (constraintFree(a)) return b;
+  const merged =
+    flatten(a, schemas).properties || flatten(b, schemas).properties
+      ? { allOf: [a, b] }
+      : { 'x-intersection': [a, b] };
+  if (a.readOnly || b.readOnly) merged.readOnly = true;
+  return merged;
+}
 // UniFi uses OpenAPI discriminator mappings plus allOf inheritance. Expand each
 // mapping into an explicit JSON-Schema union, merging inherited object fields.
 function flatten(schema, schemas, seen = new Set()) {
@@ -96,9 +111,14 @@ function flatten(schema, schemas, seen = new Set()) {
   const own = { ...schema };
   delete own.allOf;
   if (schema.allOf) {
-    for (const part of schema.allOf) {
-      const p = flatten(part, schemas, seen);
-      own.properties = { ...p.properties, ...own.properties };
+    const parts = schema.allOf.map((part) => flatten(part, schemas, seen));
+    if (schema.properties) parts.push({ properties: schema.properties });
+    own.properties = {};
+    for (const p of parts) {
+      for (const [k, v] of Object.entries(p.properties || {}))
+        own.properties[k] = Object.hasOwn(own.properties, k)
+          ? mergeProperty(own.properties[k], v, schemas)
+          : v;
       own.required = [...new Set([...(p.required || []), ...(own.required || [])])];
       own.type = own.type || p.type;
     }
@@ -107,6 +127,8 @@ function flatten(schema, schemas, seen = new Set()) {
 }
 export function normalize(schema, depth = 0, schemas = activeSchemas) {
   if (depth > 40) throw new Error('SPEC_INVALID');
+  if (schema['x-intersection'])
+    return { allOf: schema['x-intersection'].map((s) => normalize(s, depth + 1, schemas)) };
   const flat = flatten(schema, schemas);
   if (flat.discriminator?.mapping) {
     const { propertyName, mapping } = flat.discriminator;
@@ -448,8 +470,14 @@ export function selectSpecVersion(detected, pinned, bundled = bundledSpecs) {
   if (same.length) return { version: same[0], match: 'older-than-bundled' };
   return { version: list.at(-1), match: 'major-mismatch' };
 }
+// The redaction marker is never a real value: sending it would overwrite a secret.
+const hasRedactionMarker = (v) =>
+  typeof v === 'string'
+    ? v.includes(REDACTED)
+    : Boolean(v && typeof v === 'object' && Object.values(v).some(hasRedactionMarker));
 export function validateInput(op, input) {
   assertBoundedJson(input);
+  if (hasRedactionMarker(input.body)) throw new Error('REDACTED_VALUE');
   if (Buffer.byteLength(JSON.stringify(input)) > 128 * 1024 || !op.validate(input))
     throw new Error('INPUT_INVALID');
   if (input.query?.limit !== undefined && (input.query.limit < 1 || input.query.limit > 200))

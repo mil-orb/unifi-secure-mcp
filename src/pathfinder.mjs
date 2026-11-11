@@ -13,6 +13,20 @@ const PAGE = 200;
 const POLICY_CAP = 1000;
 const LIST_CAP = 200;
 const EVALUATED_CAP = 100;
+// Every operation collect() may read; the server offers unifi_explain_path only when
+// all are exposed by toolsets. A test checks collect() stays within this list.
+export const readOperations = Object.freeze([
+  'getFirewallZones',
+  'getNetworksOverviewPage',
+  'getNetworkDetails',
+  'getConnectedClientDetails',
+  'getFirewallPolicies',
+  'getTrafficMatchingLists',
+  'getWifiBroadcastPage',
+  'getWifiBroadcastDetails',
+  'getAclRulePage',
+  'getFirewallPolicyOrdering',
+]);
 const RUNTIME_FILTERS = {
   APPLICATION: 'application (DPI)',
   APPLICATION_CATEGORY: 'application category (DPI)',

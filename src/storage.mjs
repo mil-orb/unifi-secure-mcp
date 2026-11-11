@@ -15,6 +15,9 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { assertPrivateFile, dataFile } from './config.mjs';
 const powershell = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+// The UniFi API key's slot. Case-insensitive because Windows file names are.
+export const reservedSecretName = (name) =>
+  typeof name === 'string' && name.toLowerCase() === 'api-key';
 export function secureDirectory(path) {
   path = resolve(path);
   if (path === parse(path).root || path === homedir()) throw new Error('INSECURE_FILE');

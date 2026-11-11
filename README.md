@@ -119,7 +119,7 @@ There is no arbitrary URL, raw HTTP, shell, or browser tool. Tools are generated
 | Supporting objects | WAN definitions, VPN information, RADIUS profiles, tags, DPI categories/apps, countries |
 | Switching | Stack, MC-LAG and LAG information; hardware support varies |
 
-See [all 73 operations](docs/OPERATIONS.md). Coverage means the documented operations are implemented and registered; it does **not** mean every one has been exercised on production equipment. Not every UI setting has an official API, and a UDR7 cannot supply features that require other hardware.
+See [every operation](docs/OPERATIONS.md). Coverage means the documented operations are implemented and registered; it does **not** mean every one has been exercised on production equipment. Not every UI setting has an official API, and a UDR7 cannot supply features that require other hardware.
 
 ## Controlled writes
 

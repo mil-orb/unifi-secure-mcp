@@ -20,7 +20,7 @@ const openssl =
 // Starts a synthetic pinned-HTTPS router plus a real stdio MCP server process.
 // `info` is the /v1/info response body, or a number to answer with that HTTP status.
 // `routes` maps extra GET pathnames to synthetic JSON bodies.
-async function withSimulator({ info, specVersion, routes = {} }, run) {
+async function withSimulator({ info, specVersion, toolsets, serveArgs = [], routes = {} }, run) {
   const dir = mkdtempSync(join(tmpdir(), 'unifi-mcp-test-'));
   let server, client;
   const sim = { writes: 0, requests: [], state: { ...original } };
@@ -86,6 +86,7 @@ async function withSimulator({ info, specVersion, routes = {} }, run) {
       credentialStore: process.platform === 'win32' ? 'dpapi' : 'file',
       writeEnabled: true,
       ...(specVersion ? { specVersion } : {}),
+      ...(toolsets ? { toolsets } : {}),
       configured: true,
     };
     storeSecret(config, 'synthetic-test-value');
@@ -99,6 +100,7 @@ async function withSimulator({ info, specVersion, routes = {} }, run) {
         'serve',
         '--config',
         join(dir, 'config.json'),
+        ...serveArgs,
       ],
       stderr: 'pipe',
     });
@@ -362,6 +364,34 @@ test('unifi_explain_path sends only GET requests and rejects extra input fields'
       ])
         assert.equal((await call('unifi_explain_path', extra)).isError, true);
       assert.equal(sim.requests.length, after);
+    },
+  );
+});
+test('serve --no-detect makes no router request; helpers outside toolsets are hidden', async () => {
+  await withSimulator(
+    {
+      info: { applicationVersion: '11.0.97' },
+      toolsets: ['UniFi Devices'],
+      serveArgs: ['--no-detect'],
+    },
+    async ({ client, sim, call, result }) => {
+      const names = (await client.listTools()).tools.map((t) => t.name);
+      assert.ok(!names.includes('unifi_mermaid'));
+      assert.ok(!names.includes('unifi_explain_path'));
+      assert.ok(names.includes('unifi_status'));
+      const status = result(await call('unifi_status'));
+      assert.equal(status.spec.detected, null);
+      assert.equal(status.spec.match, 'not-detected');
+      assert.match(client.getInstructions(), /detection was skipped/);
+      for (const [name, args] of [
+        ['unifi_mermaid', { siteId: id }],
+        [
+          'unifi_explain_path',
+          { siteId: id, source: { zoneId: id }, destination: { external: true } },
+        ],
+      ])
+        assert.equal((await call(name, args)).isError, true);
+      assert.deepEqual(sim.requests, []);
     },
   );
 });

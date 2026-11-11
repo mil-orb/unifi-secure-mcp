@@ -7,7 +7,7 @@ import { X509Certificate, randomUUID } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
 import { defaultConfigPath, loadConfig, parseOrigin, dataFile } from './config.mjs';
-import { secureDirectory, writePrivate, storeSecret } from './storage.mjs';
+import { secureDirectory, writePrivate, storeSecret, reservedSecretName } from './storage.mjs';
 import { grant, revoke, policy } from './permits.mjs';
 import { safeError } from './security.mjs';
 import { operations, spec, bundledSpecs } from './catalog.mjs';
@@ -23,6 +23,7 @@ const { values, positionals } = parseArgs({
     minutes: { type: 'string' },
     name: { type: 'string' },
     help: { type: 'boolean' },
+    'no-detect': { type: 'boolean' },
     version: { type: 'boolean' },
   },
 });
@@ -160,7 +161,7 @@ try {
     console.log(`unifi-secure-mcp ${version}`);
   } else if (values.help || positionals[0] === 'help') {
     console.log(
-      'unifi-secure-mcp <serve|setup|status|operations|permit|revoke|secret> [--config ABSOLUTE_PATH]\n\nsetup       Guided certificate/key/access setup (interactive terminal)\nserve       MCP over STDIO; protocol output only\nstatus      Local access and readiness information\noperations  All operations in the pinned API schema\npermit      --site UUID --operation OPERATION_ID [--minutes 15] (flags repeatable)\nrevoke      Disable all writes immediately\nsecret      --name NAME (hidden local input; use @secret:NAME in request bodies)\n\nDefault: read-only. No insecure TLS flag or credential command-line option.',
+      'unifi-secure-mcp <serve|setup|status|operations|permit|revoke|secret> [--config ABSOLUTE_PATH]\n\nsetup       Guided certificate/key/access setup (interactive terminal)\nserve       MCP over STDIO; protocol output only (--no-detect: skip the startup version read)\nstatus      Local access and readiness information\noperations  All operations in the pinned API schema\npermit      --site UUID --operation OPERATION_ID [--minutes 15] (flags repeatable)\nrevoke      Disable all writes immediately\nsecret      --name NAME (hidden local input; use @secret:NAME in request bodies)\n\nDefault: read-only. No insecure TLS flag or credential command-line option.',
     );
   } else if (positionals[0] === 'setup') await setup();
   else if (positionals[0] === 'operations')
@@ -184,7 +185,7 @@ try {
     const config = loadConfig(configPath);
     switch (positionals[0] || 'serve') {
       case 'serve':
-        await serve(config);
+        await serve(config, { detect: !values['no-detect'] });
         break;
       case 'status':
         console.log(
@@ -221,7 +222,7 @@ try {
         break;
       case 'secret': {
         if (!config.configured || !process.stdin.isTTY) throw new Error('SETUP_REQUIRED');
-        if (!values.name || values.name === 'api-key') throw new Error('INPUT_INVALID');
+        if (!values.name || reservedSecretName(values.name)) throw new Error('INPUT_INVALID');
         const p = await prompts();
         try {
           const value = await p.ask('Secret value (hidden)', { secret: true });

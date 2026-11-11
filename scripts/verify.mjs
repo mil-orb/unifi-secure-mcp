@@ -4,7 +4,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { version } from '../src/version.mjs';
-const args = ['serve'];
+// Without --live, verification must not contact the router: skip startup version detection.
+const args = process.argv.includes('--live') ? ['serve'] : ['serve', '--no-detect'];
 const index = process.argv.indexOf('--config');
 if (index >= 0) {
   if (!process.argv[index + 1]) throw new Error('Missing config path');

@@ -2,10 +2,14 @@ import https from 'node:https';
 import { readFileSync } from 'node:fs';
 import { buildRequest, byId } from './catalog.mjs';
 import { assertPrivateFile, dataFile } from './config.mjs';
-import { certificateOptions, redact } from './security.mjs';
+import { certificateOptions, redact, tlsError } from './security.mjs';
 import { readSecret, reservedSecretName } from './storage.mjs';
 import { version } from './version.mjs';
 export class UniFiClient {
+  // The decrypted API key, read once per process (on Windows each read spawns
+  // PowerShell). It is already held in this.secrets for redaction, so caching adds no
+  // exposure. Cleared after 401/403 so a replaced key is picked up on the next call.
+  #key;
   constructor(
     config,
     {
@@ -53,9 +57,13 @@ export class UniFiClient {
     const cert = dataFile(this.config, 'router.pem');
     assertPrivateFile(cert);
     const tls = certificateOptions(readFileSync(cert, 'utf8'));
-    const key = readSecret(this.config);
-    if (/[\r\n]/.test(key)) throw new Error('CREDENTIAL_UNAVAILABLE');
-    this.secrets.add(key);
+    if (this.#key === undefined) {
+      const read = readSecret(this.config);
+      if (/[\r\n]/.test(read)) throw new Error('CREDENTIAL_UNAVAILABLE');
+      this.secrets.add(read);
+      this.#key = read;
+    }
+    const key = this.#key;
     const payload = body === undefined ? undefined : JSON.stringify(body);
     if (!op.readOnly) this.authorize(op, resolved);
     const result = await new Promise((resolve, reject) => {
@@ -92,6 +100,7 @@ export class UniFiClient {
           },
           (res) => {
             if (res.statusCode < 200 || res.statusCode >= 300) {
+              if (res.statusCode === 401 || res.statusCode === 403) this.#key = undefined;
               res.destroy();
               finish(new Error(`UPSTREAM_${res.statusCode}`));
               return;
@@ -126,7 +135,7 @@ export class UniFiClient {
             });
           },
         );
-        req.on('error', () => finish(new Error('TLS_FAILED')));
+        req.on('error', (error) => finish(new Error(tlsError(error))));
         req.end(payload);
       } catch {
         finish(new Error('TLS_FAILED'));

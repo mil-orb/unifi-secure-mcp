@@ -240,7 +240,7 @@ test('real stdio MCP and pinned HTTPS: read, preview, permit, apply, restore, re
       );
       const before = sim.requests.length;
       writePrivate(join(dir, 'router.pem'), readFileSync(join(dir, 'other.pem')));
-      await assert.rejects(new UniFiClient(config).call('getInfo', {}), /TLS_FAILED/);
+      await assert.rejects(new UniFiClient(config).call('getInfo', {}), /TLS_PIN_CHANGED/);
       assert.equal(sim.requests.length, before);
     },
   );

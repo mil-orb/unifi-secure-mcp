@@ -17,7 +17,7 @@
 
 ![Privacy-redacted example of a UniFi MCP conversation checking connected clients](assets/mcp-demo-redacted.png)
 
-*Edited, privacy-redacted illustration from an actual conversation. Device details, addresses, counts and timestamps are hidden. The response explicitly distinguishes current connections from unavailable first-seen history.*
+_Edited, privacy-redacted illustration from an actual conversation. Device details, addresses, counts and timestamps are hidden. The response explicitly distinguishes current connections from unavailable first-seen history._
 
 ## What you get
 
@@ -110,14 +110,14 @@ There is no arbitrary URL, raw HTTP, shell, or browser tool. Tools are generated
 
 ## Coverage
 
-| Area | Capabilities in the pinned API |
-| --- | --- |
+| Area                | Capabilities in the pinned API                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------------------- |
 | Devices and clients | Inventory, details, current statistics, adoption/removal, device and port actions, guest access actions |
-| Networks and Wi-Fi | Network/VLAN and Wi-Fi broadcast reads, creation, updates, deletion, network references |
-| Security policies | Firewall zones/policies/order, ACL rules/order, DNS policies, traffic matching lists |
-| Hotspot | Voucher reads, creation and removal |
-| Supporting objects | WAN definitions, VPN information, RADIUS profiles, tags, DPI categories/apps, countries |
-| Switching | Stack, MC-LAG and LAG information; hardware support varies |
+| Networks and Wi-Fi  | Network/VLAN and Wi-Fi broadcast reads, creation, updates, deletion, network references                 |
+| Security policies   | Firewall zones/policies/order, ACL rules/order, DNS policies, traffic matching lists                    |
+| Hotspot             | Voucher reads, creation and removal                                                                     |
+| Supporting objects  | WAN definitions, VPN information, RADIUS profiles, tags, DPI categories/apps, countries                 |
+| Switching           | Stack, MC-LAG and LAG information; hardware support varies                                              |
 
 See [every operation](docs/OPERATIONS.md). Coverage means the documented operations are implemented and registered; it does **not** mean every one has been exercised on production equipment. Not every UI setting has an official API, and a UDR7 cannot supply features that require other hardware.
 

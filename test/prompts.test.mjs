@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { iotAuditPrompt, iotAuditText } from '../src/server.mjs';
+import {
+  iotAuditPrompt,
+  iotAuditText,
+  troubleshootText,
+  changeReviewText,
+} from '../src/server.mjs';
 import { operations } from '../src/catalog.mjs';
 
 // Synthetic documentation-range addresses, built at runtime.
@@ -78,4 +83,18 @@ test('unifi_iot_audit adapts the matrix to the optional arguments', () => {
   assert.match(given, /expect internet "no"/);
   for (const row of ['IoT -> Internal zone', 'Gateway zone, UDP 53 and UDP 67', 'same network'])
     assert.ok(given.includes(row), row);
+});
+
+test('unifi_troubleshoot and unifi_change_review cap and escape their argument', () => {
+  for (const [text, field] of [
+    [troubleshootText, 'symptom'],
+    [changeReviewText, 'planId'],
+  ]) {
+    const out = text({ [field]: `"\n${'y'.repeat(600)}` });
+    assert.ok(out.includes(JSON.stringify(`"\n${'y'.repeat(510)}`)), field);
+    assert.ok(!out.includes('y'.repeat(511)), field);
+    assert.ok(!out.includes('\n'), field);
+    assert.ok(text({}).includes('"unspecified"'), field);
+    assert.ok(text({ [field]: '' }).includes('"unspecified"'), field);
+  }
 });

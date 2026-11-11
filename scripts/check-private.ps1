@@ -14,4 +14,4 @@ try {
             if($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin $allowed){throw 'Unsafe permissions.'}
         }
     }
-}catch{[Console]::Error.WriteLine('Private storage permission validation failed.');exit 1}
+}catch{[Console]::Error.WriteLine('Private storage permission validation failed.');exit 2}

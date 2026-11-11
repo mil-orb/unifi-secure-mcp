@@ -4,3 +4,5 @@ package-lock.json
 assets/
 docs/OPERATIONS.md
 docs/spec-changes/
+.claude/
+test/fixtures/specs/

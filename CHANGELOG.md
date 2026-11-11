@@ -22,6 +22,16 @@
 - `serve --no-detect` skips the startup version read; `npm run verify` uses it unless `--live` is given.
 - `unifi_mermaid` and `unifi_explain_path` are offered only when `toolsets` (if set) expose every operation they read.
 - Redaction no longer hides `authorizationMethod`, `grantedAuthorization`, `revokedAuthorization` or `presharedKeyNetworkIds`.
+- `npm run privacy` scans unstaged edits and untracked, non-ignored files as well as the index.
+- Setup changes permissions only on a new, empty, marked (`.unifi-secure-mcp-private`) or application-created folder, never the home folder or an ancestor of it (any letter case); otherwise `PRIVATE_DIR_NOT_DEDICATED`.
+- Windows helper scripts run with `-ExecutionPolicy Bypass` (process scope only); a script PowerShell refuses to run is reported as `POWERSHELL_BLOCKED`, not as unsafe permissions. PowerShell is located under `%SystemRoot%`.
+- The decrypted API key is read once per process and re-read after HTTP 401/403 (previously one PowerShell spawn per API call on Windows).
+- CA-issued router certificates can be pinned (leaf as the only anchor, exact-bytes pin kept); a changed or expired certificate gets its own message (`TLS_PIN_CHANGED`, `TLS_CERT_EXPIRED`).
+- Setup asks for the browser-verified fingerprint before showing the probe's value; a failed enrollment is deleted, and older ones can be deleted after typed confirmation.
+- Deeply nested router JSON is refused as `RESPONSE_INVALID` instead of overflowing the stack; a config file that is not a JSON object is `CONFIG_INVALID`.
+- The DPAPI helper exchanges UTF-8 bytes with Node instead of using the console code page.
+- `unifi_troubleshoot` and `unifi_change_review` arguments are capped at 512 characters, like `unifi_iot_audit`.
+- `@modelcontextprotocol/sdk` 1.32.2. CI adds a Prettier check and a Node 26 job.
 
 ## 0.2.0
 

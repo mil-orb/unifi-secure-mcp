@@ -7,34 +7,59 @@ import {
   renameSync,
   unlinkSync,
   lstatSync,
+  readdirSync,
 } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { dirname, resolve, parse } from 'node:path';
+import { dirname, resolve, parse, join, sep } from 'node:path';
 import { homedir } from 'node:os';
-import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { assertPrivateFile, dataFile } from './config.mjs';
-const powershell = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+import { runPowerShell } from './powershell.mjs';
 // The UniFi API key's slot. Case-insensitive because Windows file names are.
 export const reservedSecretName = (name) =>
   typeof name === 'string' && name.toLowerCase() === 'api-key';
-export function secureDirectory(path) {
+// Written into every folder this application restricts. Securing a folder replaces the
+// ACLs of everything inside it, so only new, empty, marked or application-created
+// folders qualify.
+export const privateMarker = '.unifi-secure-mcp-private';
+// Names this application creates. Folders from 0.3.0 and earlier carry no marker.
+const ownEntry =
+  /^(?:\.unifi-secure-mcp-private|enrollment-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|router\.pem|permit\.json|audit\.jsonl|write\.lock|[a-z0-9_-]{1,64}\.(?:dpapi|secret)|.+\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp)$/i;
+const pathKey = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+// known: extra entry names the caller expects (the config file, the data directory).
+export function secureDirectory(path, { known = [] } = {}) {
   path = resolve(path);
-  if (path === parse(path).root || path === homedir()) throw new Error('INSECURE_FILE');
+  const home = pathKey(resolve(homedir())),
+    target = pathKey(path).replace(/[\\/]+$/, '');
+  // Never the drive root, the home directory or any ancestor of it, in any letter case.
+  if (path === parse(path).root || home === target || home.startsWith(target + sep))
+    throw new Error('INSECURE_FILE');
+  let entries = [];
+  try {
+    if (!lstatSync(path).isDirectory()) throw new Error('INSECURE_FILE');
+    entries = readdirSync(path);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw new Error('INSECURE_FILE');
+  }
+  if (
+    entries.length &&
+    !entries.includes(privateMarker) &&
+    !entries.every((name) => ownEntry.test(name) || known.includes(name))
+  )
+    throw new Error('PRIVATE_DIR_NOT_DEDICATED');
   mkdirSync(path, { recursive: true, mode: 0o700 });
+  if (!entries.includes(privateMarker))
+    writeFileSync(
+      join(path, privateMarker),
+      'Private folder of unifi-secure-mcp. Setup restricts it and everything inside to one account.\n',
+      { mode: 0o600 },
+    );
   if (process.platform !== 'win32') chmodSync(path, 0o700);
   else
-    execFileSync(
-      powershell,
-      [
-        '-NoProfile',
-        '-NonInteractive',
-        '-File',
-        fileURLToPath(new URL('../scripts/protect-data.ps1', import.meta.url)),
-        '-Path',
-        path,
-      ],
-      { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], timeout: 15000 },
+    runPowerShell(
+      'protect-data.ps1',
+      ['-Path', path],
+      { stdio: ['ignore', 'pipe', 'pipe'], timeout: 15000 },
+      'INSECURE_FILE',
     );
 }
 export function writePrivate(path, contents) {
@@ -61,25 +86,11 @@ export function storeSecret(config, value, name = 'api-key') {
   secureDirectory(config.dataDir);
   if (existsSync(path)) assertPrivateFile(path);
   if (config.credentialStore === 'dpapi')
-    execFileSync(
-      powershell,
-      [
-        '-NoProfile',
-        '-NonInteractive',
-        '-File',
-        fileURLToPath(new URL('../scripts/secret.ps1', import.meta.url)),
-        '-Mode',
-        'Store',
-        '-Path',
-        path,
-      ],
-      {
-        input: value,
-        windowsHide: true,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        timeout: 10000,
-        maxBuffer: 16384,
-      },
+    runPowerShell(
+      'secret.ps1',
+      ['-Mode', 'Store', '-Path', path],
+      { input: value, stdio: ['pipe', 'pipe', 'pipe'], timeout: 10000, maxBuffer: 16384 },
+      'SECRET_UNAVAILABLE',
     );
   else writePrivate(path, value);
 }
@@ -93,30 +104,23 @@ export function readSecret(config, name = 'api-key') {
     assertPrivateFile(path);
     const value =
       config.credentialStore === 'dpapi'
-        ? execFileSync(
-            powershell,
-            [
-              '-NoProfile',
-              '-NonInteractive',
-              '-File',
-              fileURLToPath(new URL('../scripts/secret.ps1', import.meta.url)),
-              '-Mode',
-              'Read',
-              '-Path',
-              path,
-            ],
+        ? runPowerShell(
+            'secret.ps1',
+            ['-Mode', 'Read', '-Path', path],
             {
               encoding: 'utf8',
-              windowsHide: true,
               stdio: ['ignore', 'pipe', 'pipe'],
               timeout: 10000,
               maxBuffer: 16384,
             },
+            'SECRET_UNAVAILABLE',
           )
         : readFileSync(path, 'utf8');
     if (!value || value.length > 8192) throw new Error();
     return value;
-  } catch {
+  } catch (error) {
+    // A script PowerShell refused to run is reported as such, not as a missing key.
+    if (error.message === 'POWERSHELL_BLOCKED') throw error;
     throw new Error(name === 'api-key' ? 'CREDENTIAL_UNAVAILABLE' : 'SECRET_UNAVAILABLE');
   }
 }

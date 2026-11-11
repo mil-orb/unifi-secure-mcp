@@ -2,7 +2,12 @@
   "mcpServers": {
     "unifi": {
       "command": "/absolute/path/to/node",
-      "args": ["/absolute/path/to/unifi-secure-mcp/src/cli.mjs", "serve", "--config", "/absolute/path/outside/checkout/config.json"]
+      "args": [
+        "/absolute/path/to/unifi-secure-mcp/src/cli.mjs",
+        "serve",
+        "--config",
+        "/absolute/path/outside/checkout/config.json"
+      ]
     }
   }
 }

@@ -12,7 +12,7 @@ This is a single-user local STDIO MCP server for a security-critical network con
 - All mutation tools preview. Applying requires write-capable configuration, a valid exact operation/site permit, an unexpired single-use plan, exact confirmation, a cross-process lock, and a durable pre-send audit record.
 - Where an equivalent GET exists, the target is re-read and compared with the preview. Changed secrets also invalidate the preview. Requests without an equivalent GET explicitly disclose that limitation.
 - Requests have a 15-second network deadline, 2 MiB response cap, 128 KiB input cap, four active tool calls, and bounded pagination (1–200 per page). Twenty in-memory plans are retained for at most five minutes each.
-- Secrets, certificates, permits, audit records and user configuration live outside source control. Windows private storage ACLs are checked at startup; POSIX private files require owner-only permissions. Local runtime source must also be protected.
+- Secrets, certificates, permits, audit records and user configuration live outside source control. Windows private storage ACLs are checked at startup; POSIX private files require owner-only permissions. Setup restricts only new, empty, marked or application-created folders, never the home folder or an ancestor of it. Local runtime source must also be protected.
 
 ## Trust and remaining risk
 
@@ -20,7 +20,7 @@ The MCP host, enrolling OS user, operating system, installed code/dependencies a
 
 Tool annotations and confirmation phrases are not human-authentication boundaries. The model can see a confirmation phrase; the host and user must authorize the actual effect. A UniFi API key may retain broader permissions than the MCP allows. Prefer least privilege and short expiry when available.
 
-Certificate pinning uses an independently enrolled leaf certificate instead of ordinary DNS-name matching. Incorrect initial trust can pin an attacker. The initial public-certificate probe sends no credentials. Certificate rotation intentionally breaks access until reviewed enrollment.
+Certificate pinning uses an independently enrolled leaf certificate instead of ordinary DNS-name matching. The leaf is the only trust anchor (partial-chain validation, so a CA-issued leaf also works) and its exact bytes are compared; validity dates are enforced. Incorrect initial trust can pin an attacker. Setup asks for the fingerprint from a trusted browser session before showing the probe's value. The initial public-certificate probe sends no credentials. Certificate rotation intentionally breaks access until reviewed enrollment.
 
 Read/compare/write is not an atomic controller transaction; another administrator can change state between checks. Requests already sent cannot be revoked. A lost response or failed post-write audit can leave an uncertain outcome. No automatic rollback is promised, and some actions permanently delete data or interrupt management access.
 

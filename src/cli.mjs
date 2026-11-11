@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline/promises';
 import { Writable } from 'node:stream';
 import tls from 'node:tls';
 import { X509Certificate, randomUUID } from 'node:crypto';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, basename } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
 import { defaultConfigPath, loadConfig, parseOrigin, dataFile } from './config.mjs';
 import { secureDirectory, writePrivate, storeSecret, reservedSecretName } from './storage.mjs';
@@ -14,6 +14,7 @@ import { operations, spec, bundledSpecs } from './catalog.mjs';
 import { version } from './version.mjs';
 import { UniFiClient } from './client.mjs';
 import { serve } from './server.mjs';
+import { confirmFingerprint, enrollments, removeEnrollment } from './enrollment.mjs';
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
@@ -110,18 +111,7 @@ async function setup() {
       }),
     );
     const cert = await enroll(baseUrl);
-    console.log(
-      `\nRouter certificate SHA-256: ${cert.fingerprint256}\nExpires: ${cert.validTo}\nThis public-certificate probe sends NO API key. Compare the fingerprint with the certificate shown by your trusted UniFi browser session.`,
-    );
-    const expected = (await p.ask('Paste the verified SHA-256 fingerprint'))
-      .replace(/[^a-f0-9]/gi, '')
-      .toUpperCase();
-    if (
-      expected !== cert.fingerprint256.replaceAll(':', '') ||
-      Date.parse(cert.validTo) <= Date.now() ||
-      Date.parse(cert.validFrom) > Date.now()
-    )
-      throw new Error('TLS_FAILED');
+    await confirmFingerprint(cert, (q) => p.ask(q), console.log);
     const mode = await p.ask(
       'Access: readonly or write-capable (writes still require a short-lived permit)',
       { fallback: 'readonly' },
@@ -141,17 +131,41 @@ async function setup() {
       credentialStore: process.platform === 'win32' ? 'dpapi' : 'file',
       writeEnabled: mode === 'write-capable',
     };
+    // Only new, empty or application-created folders are restricted (see secureDirectory).
+    const configDir = dirname(configPath);
+    secureDirectory(configDir, {
+      known: [basename(configPath), ...(dirname(dataDir) === configDir ? [basename(dataDir)] : [])],
+    });
     secureDirectory(dataDir);
-    secureDirectory(config.dataDir);
-    secureDirectory(dirname(configPath));
-    writePrivate(dataFile(config, 'router.pem'), cert.toString());
-    storeSecret(config, key);
-    revoke(config);
-    const info = await new UniFiClient({ ...config, configured: true }).call('getInfo', {});
+    let info;
+    try {
+      secureDirectory(config.dataDir);
+      writePrivate(dataFile(config, 'router.pem'), cert.toString());
+      storeSecret(config, key);
+      revoke(config);
+      info = await new UniFiClient({ ...config, configured: true }).call('getInfo', {});
+    } catch (error) {
+      // A failed generation must not leave an API key behind.
+      try {
+        removeEnrollment(dataDir, config.dataDir);
+      } catch {}
+      throw error;
+    }
     writePrivate(configPath, JSON.stringify(config, null, 2));
     console.log(
       `\nSetup verified. Network ${info.applicationVersion || 'connected'}. Mode: read-only${config.writeEnabled ? ' (write tool available; no permit active)' : ''}.\nConfig: ${configPath}\n${process.platform === 'win32' ? 'Key storage: Windows DPAPI, current user.' : 'Key storage: local owner-only file (not encrypted); use an encrypted volume/OS key management for stronger at-rest protection.'}\nRestart your MCP host after registering the server. See docs/SETUP.md for Codex and standard MCP configuration.`,
     );
+    const older = enrollments(dataDir).filter((path) => path !== resolve(config.dataDir));
+    if (older.length) {
+      console.log(
+        `\n${older.length} older enrollment folder(s) remain in ${dataDir}. Each holds a previous API key (encrypted), certificate, permits and audit log. MCP processes still running with the old configuration stop working once they are deleted; restart them.`,
+      );
+      if ((await p.ask('Delete them now? Type DELETE to confirm')) === 'DELETE') {
+        for (const path of older) removeEnrollment(dataDir, path);
+        console.log(`Deleted ${older.length} older enrollment folder(s).`);
+      } else console.log('Kept. Setup offers this again the next time it runs.');
+      console.log('Also revoke the old API keys in UniFi Network > Integrations.');
+    }
   } finally {
     p.close();
   }

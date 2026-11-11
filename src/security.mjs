@@ -14,8 +14,12 @@ const isSecretKey = (k) => {
   const name = k.replace(/[^a-z0-9]/gi, '');
   return secretKey.test(name) && !notSecret.has(name.toLowerCase());
 };
-export function redact(value, secrets = []) {
-  if (Array.isArray(value)) return value.map((v) => redact(v, secrets));
+// Router JSON is parsed without a depth limit, but these walks recurse. Far deeper than
+// any documented response, and far below the stack limit.
+const maxDepth = 64;
+export function redact(value, secrets = [], depth = 0) {
+  if (depth > maxDepth) throw new Error('RESPONSE_INVALID');
+  if (Array.isArray(value)) return value.map((v) => redact(v, secrets, depth + 1));
   if (value && typeof value === 'object')
     return Object.fromEntries(
       Object.entries(value).map(([k, v]) => [
@@ -26,7 +30,7 @@ export function redact(value, secrets = []) {
             Object.hasOwn(value, field),
           ))
           ? REDACTED
-          : redact(v, secrets),
+          : redact(v, secrets, depth + 1),
       ]),
     );
   if (typeof value === 'string')
@@ -42,13 +46,14 @@ export function assertBoundedJson(value, depth = 0) {
     }
   if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('INPUT_INVALID');
 }
-export function canonical(value) {
-  if (Array.isArray(value)) return value.map(canonical);
+export function canonical(value, depth = 0) {
+  if (depth > maxDepth) throw new Error('RESPONSE_INVALID');
+  if (Array.isArray(value)) return value.map((v) => canonical(v, depth + 1));
   if (value && typeof value === 'object')
     return Object.fromEntries(
       Object.keys(value)
         .sort()
-        .map((k) => [k, canonical(value[k])]),
+        .map((k) => [k, canonical(value[k], depth + 1)]),
     );
   return value;
 }
@@ -60,6 +65,10 @@ export function certificateOptions(pem) {
   const pinned = new X509Certificate(pem).raw;
   return {
     ca: pem,
+    // The enrolled leaf is the only trust anchor, even when it was issued by a CA
+    // (custom or ACME certificate) whose root is not trusted here. Validity dates are
+    // still checked, and checkServerIdentity below pins the exact bytes.
+    allowPartialTrustChain: true,
     rejectUnauthorized: true,
     minVersion: 'TLSv1.2',
     checkServerIdentity(_host, peer) {
@@ -67,6 +76,21 @@ export function certificateOptions(pem) {
         return new Error('TLS_PIN_CHANGED');
     },
   };
+}
+// OpenSSL codes meaning the peer did not present the enrolled certificate.
+const otherCertificate = new Set([
+  'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'SELF_SIGNED_CERT_IN_CHAIN',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'UNABLE_TO_GET_ISSUER_CERT',
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'CERT_SIGNATURE_FAILURE',
+]);
+export function tlsError(error) {
+  if (error?.message === 'TLS_PIN_CHANGED' || otherCertificate.has(error?.code))
+    return 'TLS_PIN_CHANGED';
+  if (['CERT_HAS_EXPIRED', 'CERT_NOT_YET_VALID'].includes(error?.code)) return 'TLS_CERT_EXPIRED';
+  return 'TLS_FAILED';
 }
 export const messages = {
   PERMISSION_CHECK_TIMEOUT:
@@ -80,6 +104,16 @@ export const messages = {
     'The credential cannot be loaded. Run setup with the owning OS account; never print the key.',
   TLS_FAILED:
     'Secure connection failed. Check the router address and enrolled certificate; do not disable verification.',
+  TLS_PIN_CHANGED:
+    'The router presented a certificate other than the enrolled one. Do not bypass this: verify the new certificate independently, then re-run setup.',
+  TLS_CERT_EXPIRED:
+    'The router certificate has expired or is not yet valid. Renew it on the router, verify the new fingerprint independently, then re-run setup.',
+  TLS_FINGERPRINT_MISMATCH:
+    'The fingerprint you entered does not match the certificate the router presented. Setup stopped; nothing was stored.',
+  POWERSHELL_BLOCKED:
+    'Windows PowerShell could not run a bundled helper script (for example, execution policy set by Group Policy, or a downloaded copy that Windows blocked). See Troubleshooting in docs/SETUP.md; do not weaken private-storage permissions.',
+  PRIVATE_DIR_NOT_DEDICATED:
+    'Choose a new or empty folder used only by this MCP. Setup restricts the folder and everything inside it to your account, so it refuses a folder that already holds other files.',
   TIMEOUT: 'The router request timed out.',
   INPUT_INVALID: 'Input does not match the documented operation schema or safety limits.',
   REDACTED_VALUE:

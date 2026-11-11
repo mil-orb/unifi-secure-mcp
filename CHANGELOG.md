@@ -32,6 +32,10 @@
 - The DPAPI helper exchanges UTF-8 bytes with Node instead of using the console code page.
 - `unifi_troubleshoot` and `unifi_change_review` arguments are capped at 512 characters, like `unifi_iot_audit`.
 - `@modelcontextprotocol/sdk` 1.32.2. CI adds a Prettier check and a Node 26 job.
+- Plan-bound permits: with write-capable configuration a preview returns `localPermit` (`permit --plan PLAN_ID`). Run in an interactive terminal, it shows the previewed request and, after `YES`, authorizes only that plan's request hash, once, until the preview expires. Operation/site permits work as before.
+- Previews add `sensitiveFields`: each secret field is shown as a `@secret:NAME` reference, a hidden new literal, or omitted.
+- A write that fails before any request byte is sent (permit refusal, connection refused, certificate change, credential unavailable) is reported with its own error and audited as `blocked` instead of `WRITE_UNCERTAIN`.
+- The `permit` command checks operation IDs against the pinned schema or the one the last server start loaded (recorded as `active-spec.json` in the private directory), and says which.
 
 ## 0.2.0
 

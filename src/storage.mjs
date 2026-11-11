@@ -23,7 +23,7 @@ export const reservedSecretName = (name) =>
 export const privateMarker = '.unifi-secure-mcp-private';
 // Names this application creates. Folders from 0.3.0 and earlier carry no marker.
 const ownEntry =
-  /^(?:\.unifi-secure-mcp-private|enrollment-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|router\.pem|permit\.json|audit\.jsonl|write\.lock|[a-z0-9_-]{1,64}\.(?:dpapi|secret)|.+\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp)$/i;
+  /^(?:\.unifi-secure-mcp-private|enrollment-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|router\.pem|permit\.json|audit\.jsonl|write\.lock|active-spec\.json|preview-[0-9a-f-]{36}\.json|[a-z0-9_-]{1,64}\.(?:dpapi|secret)|.+\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp)$/i;
 const pathKey = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
 // known: extra entry names the caller expects (the config file, the data directory).
 export function secureDirectory(path, { known = [] } = {}) {
@@ -132,4 +132,23 @@ export function ready(config) {
         dataFile(config, 'api-key' + (config.credentialStore === 'dpapi' ? '.dpapi' : '.secret')),
       ),
   );
+}
+// The schema the last server start loaded for this enrollment (best effort), so the
+// local permit command validates operation IDs against the same schema.
+export function recordActiveSpec(config, active) {
+  try {
+    writePrivate(
+      dataFile(config, 'active-spec.json'),
+      JSON.stringify({ loaded: active.loaded, detected: active.detected, match: active.match }),
+    );
+  } catch {}
+}
+export function lastActiveSpec(config) {
+  try {
+    const path = dataFile(config, 'active-spec.json');
+    assertPrivateFile(path);
+    return JSON.parse(readFileSync(path, 'utf8'))?.loaded;
+  } catch {
+    return undefined;
+  }
 }

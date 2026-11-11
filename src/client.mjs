@@ -5,6 +5,10 @@ import { assertPrivateFile, dataFile } from './config.mjs';
 import { certificateOptions, redact, tlsError } from './security.mjs';
 import { readSecret, reservedSecretName } from './storage.mjs';
 import { version } from './version.mjs';
+// Marks a failure that happened before any request byte reached the router, so a write
+// that failed this way is known not to have been sent.
+const notSent = (error) =>
+  Object.assign(error instanceof Error ? error : new Error('TLS_FAILED'), { notSent: true });
 export class UniFiClient {
   // The decrypted API key, read once per process (on Windows each read spawns
   // PowerShell). It is already held in this.secrets for redaction, so caching adds no
@@ -48,24 +52,34 @@ export class UniFiClient {
       ...(input.body === undefined ? {} : { body: this.resolveSecrets(input.body) }),
     };
   }
-  async call(operation, input, { raw = false } = {}) {
-    if (!this.config.configured) throw new Error('SETUP_REQUIRED');
-    const op = typeof operation === 'string' ? byId.get(operation) : operation;
-    if (!op || byId.get(op.id) !== op) throw new Error('OPERATION_UNAVAILABLE');
-    const resolved = this.resolveInput(input),
-      { url, method, body } = buildRequest(op, resolved, this.config.baseUrl);
-    const cert = dataFile(this.config, 'router.pem');
-    assertPrivateFile(cert);
-    const tls = certificateOptions(readFileSync(cert, 'utf8'));
-    if (this.#key === undefined) {
-      const read = readSecret(this.config);
-      if (/[\r\n]/.test(read)) throw new Error('CREDENTIAL_UNAVAILABLE');
-      this.secrets.add(read);
-      this.#key = read;
+  // plan: the { id, requestHash } binding passed to authorize for a plan-bound permit.
+  async call(operation, input, { raw = false, plan } = {}) {
+    let op, url, method, tls, key, payload;
+    try {
+      if (!this.config.configured) throw new Error('SETUP_REQUIRED');
+      op = typeof operation === 'string' ? byId.get(operation) : operation;
+      if (!op || byId.get(op.id) !== op) throw new Error('OPERATION_UNAVAILABLE');
+      const resolved = this.resolveInput(input),
+        built = buildRequest(op, resolved, this.config.baseUrl);
+      ({ url, method } = built);
+      const cert = dataFile(this.config, 'router.pem');
+      assertPrivateFile(cert);
+      tls = certificateOptions(readFileSync(cert, 'utf8'));
+      if (this.#key === undefined) {
+        const read = readSecret(this.config);
+        if (/[\r\n]/.test(read)) throw new Error('CREDENTIAL_UNAVAILABLE');
+        this.secrets.add(read);
+        this.#key = read;
+      }
+      key = this.#key;
+      payload = built.body === undefined ? undefined : JSON.stringify(built.body);
+      if (!op.readOnly) this.authorize(op, resolved, plan);
+    } catch (error) {
+      throw notSent(error);
     }
-    const key = this.#key;
-    const payload = body === undefined ? undefined : JSON.stringify(body);
-    if (!op.readOnly) this.authorize(op, resolved);
+    // Until the TLS handshake with the pinned router completes, no request byte has left.
+    let connected = false;
+    const failure = (code) => (connected ? new Error(code) : notSent(new Error(code)));
     const result = await new Promise((resolve, reject) => {
       let settled = false;
       const finish = (error, value) => {
@@ -77,7 +91,7 @@ export class UniFiClient {
       let req;
       const deadline = setTimeout(() => {
         req?.destroy();
-        finish(new Error('TIMEOUT'));
+        finish(failure('TIMEOUT'));
       }, 15000);
       try {
         req = this.request(
@@ -135,10 +149,11 @@ export class UniFiClient {
             });
           },
         );
-        req.on('error', (error) => finish(new Error(tlsError(error))));
+        req.on('socket', (socket) => socket.once?.('secureConnect', () => (connected = true)));
+        req.on('error', (error) => finish(failure(tlsError(error))));
         req.end(payload);
       } catch {
-        finish(new Error('TLS_FAILED'));
+        finish(failure('TLS_FAILED'));
       }
     });
     return raw ? result : this.clean(result);

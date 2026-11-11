@@ -7,10 +7,16 @@ import { X509Certificate, randomUUID } from 'node:crypto';
 import { resolve, dirname, basename } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
 import { defaultConfigPath, loadConfig, parseOrigin, dataFile } from './config.mjs';
-import { secureDirectory, writePrivate, storeSecret, reservedSecretName } from './storage.mjs';
-import { grant, revoke, policy } from './permits.mjs';
+import {
+  secureDirectory,
+  writePrivate,
+  storeSecret,
+  reservedSecretName,
+  lastActiveSpec,
+} from './storage.mjs';
+import { grant, grantPlan, readPreview, revoke, policy } from './permits.mjs';
 import { safeError } from './security.mjs';
-import { operations, spec, bundledSpecs } from './catalog.mjs';
+import { operations, spec, bundledSpecs, activateSpec } from './catalog.mjs';
 import { version } from './version.mjs';
 import { UniFiClient } from './client.mjs';
 import { serve } from './server.mjs';
@@ -22,6 +28,7 @@ const { values, positionals } = parseArgs({
     site: { type: 'string', multiple: true },
     operation: { type: 'string', multiple: true },
     minutes: { type: 'string' },
+    plan: { type: 'string' },
     name: { type: 'string' },
     help: { type: 'boolean' },
     'no-detect': { type: 'boolean' },
@@ -170,12 +177,52 @@ async function setup() {
     p.close();
   }
 }
+// permit --plan: the human reads the exact previewed request in their own terminal and
+// authorizes only that request, once, until the preview expires.
+async function permitPlan(config, planId) {
+  if (values.site || values.operation || values.minutes !== undefined || !process.stdin.isTTY)
+    throw new Error('INPUT_INVALID');
+  const shared = readPreview(config, planId);
+  if (bundledSpecs.includes(shared.specVersion)) activateSpec(shared.specVersion);
+  const { operation, method, path, siteId, request, sensitiveFields, requestHash } = shared;
+  console.log(
+    JSON.stringify(
+      {
+        planId: shared.planId,
+        operation,
+        method,
+        path,
+        siteId,
+        request,
+        sensitiveFields,
+        requestHash,
+      },
+      null,
+      2,
+    ),
+  );
+  console.log(
+    `\nThis permit authorizes exactly the request above, once, until ${shared.expiresAt}. [REDACTED] hides secret values; sensitiveFields says whether each is a @secret reference, a new literal or omitted. Grant it only if this is the change you asked for.`,
+  );
+  const p = await prompts();
+  let answer;
+  try {
+    answer = await p.ask('Grant a one-time permit for this request? Type YES');
+  } finally {
+    p.close();
+  }
+  if (answer !== 'YES') {
+    console.log('No permit granted.');
+    return;
+  }
+  console.log(JSON.stringify(grantPlan(config, planId, requestHash), null, 2));
+}
 try {
   if (values.version) {
     console.log(`unifi-secure-mcp ${version}`);
   } else if (values.help || positionals[0] === 'help') {
     console.log(
-      'unifi-secure-mcp <serve|setup|status|operations|permit|revoke|secret> [--config ABSOLUTE_PATH]\n\nsetup       Guided certificate/key/access setup (interactive terminal)\nserve       MCP over STDIO; protocol output only (--no-detect: skip the startup version read)\nstatus      Local access and readiness information\noperations  All operations in the pinned API schema\npermit      --site UUID --operation OPERATION_ID [--minutes 15] (flags repeatable)\nrevoke      Disable all writes immediately\nsecret      --name NAME (hidden local input; use @secret:NAME in request bodies)\n\nDefault: read-only. No insecure TLS flag or credential command-line option.',
+      'unifi-secure-mcp <serve|setup|status|operations|permit|revoke|secret> [--config ABSOLUTE_PATH]\n\nsetup       Guided certificate/key/access setup (interactive terminal)\nserve       MCP over STDIO; protocol output only (--no-detect: skip the startup version read)\nstatus      Local access and readiness information\noperations  All operations in the pinned API schema\npermit      --plan PLAN_ID (interactive: shows that preview, authorizes only it, once)\n            --site UUID --operation OPERATION_ID [--minutes 15] (flags repeatable)\nrevoke      Disable all writes immediately\nsecret      --name NAME (hidden local input; use @secret:NAME in request bodies)\n\nDefault: read-only. No insecure TLS flag or credential command-line option.',
     );
   } else if (positionals[0] === 'setup') await setup();
   else if (positionals[0] === 'operations')
@@ -217,6 +264,20 @@ try {
         break;
       case 'permit':
         if (!config.configured) throw new Error('SETUP_REQUIRED');
+        if (values.plan !== undefined) {
+          await permitPlan(config, values.plan);
+          break;
+        }
+        {
+          // Validate operation IDs against the schema the server uses: the pin, else the
+          // one the last server start loaded, else the newest bundled one.
+          const last = lastActiveSpec(config);
+          const version = config.specVersion ?? (bundledSpecs.includes(last) ? last : undefined);
+          if (version) activateSpec(version);
+          console.error(
+            `Operation IDs checked against Network API schema ${spec.info.version} (${config.specVersion ? 'pinned in config' : version ? 'loaded by the last server start' : 'newest bundled; no server start recorded yet'}).`,
+          );
+        }
         console.log(
           JSON.stringify(
             grant(config, {

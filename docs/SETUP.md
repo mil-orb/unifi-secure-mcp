@@ -73,13 +73,21 @@ Hosted ChatGPT Work/web does not automatically receive local STDIO access. Avail
 
 Mutation operation tools create previews even while execution is read-only. Their `readOnlyHint` describes their actual behavior: previewing performs reads and stores only transient local state. `unifi_apply_plan` is explicitly annotated as potentially destructive. Annotations inform hosts; the server enforces authorization separately.
 
-After reviewing an operation-specific preview, grant a narrow permit locally:
+After reviewing a preview, authorize exactly that request locally. With write-capable configuration, each preview returns `localPermit`, a command such as:
+
+```sh
+node src/cli.mjs permit --plan PLAN_ID
+```
+
+Run it in your own interactive terminal. It prints the request as the server previewed it (secret values hidden; `sensitiveFields` says whether each secret field is a `@secret:NAME` reference, a new literal or omitted) and its request hash, then asks you to type `YES`. The resulting permit names that plan and request hash only: the model cannot apply a different body, another plan, or the same plan twice under it, and it expires with the preview (five minutes). The server stores each preview for this purpose as `preview-PLAN_ID.json` in the private data directory (redacted request, operation, site and hash) and deletes it when the plan is applied, discarded or expired.
+
+The broader operation/site permit remains available when you need it, for example for several changes in a row:
 
 ```sh
 node src/cli.mjs permit --site SITE_UUID --operation updateWifiBroadcast --minutes 15
 ```
 
-Use actual IDs from your own MCP reads. Repeat `--site` or `--operation` only when needed. Permits replace previous permits, last 1–60 minutes, and authorize only exact operation/site combinations. They are shared by local processes using the same private directory. Plans belong to one process and are lost on restart. Approval text is an explicit confirmation mechanism, not cryptographic evidence of human approval; keep host confirmation enabled.
+It authorizes any previewed body for those operations and sites until it expires, so the host's per-call approval is then the only human gate: never set `unifi_apply_plan` to "always allow" in a host. Use actual IDs from your own MCP reads. Repeat `--site` or `--operation` only when needed. Permits replace previous permits; operation/site permits last 1–60 minutes and authorize only exact operation/site combinations. The `permit` command checks operation IDs against the schema the server loaded at its last start (or the `specVersion` pin), so a permit is not silently read-only on an older router. They are shared by local processes using the same private directory. Plans belong to one process and are lost on restart. Approval text is an explicit confirmation mechanism, not cryptographic evidence of human approval; keep host confirmation enabled.
 
 Apply once, read back state, then `node src/cli.mjs revoke`. Revocation blocks the next authorization check; it cannot cancel a request already sent. Keep independent management access for changes that can disconnect the MCP host.
 
@@ -98,7 +106,7 @@ Protect installed source and dependencies from less-trusted users as well as pro
 - **404/unsupported operation:** compare the installed Network version and hardware with the loaded schema (`unifi_status` → `spec`). Complete registration does not guarantee firmware support.
 - **Unsafe storage:** repair ownership/ACLs, then restart. Do not weaken protection just to make startup pass.
 - **Stale plan:** re-read and review a fresh preview. The server cannot make its read/compare/write sequence atomic with the controller.
-- **Write uncertainty:** inspect the affected resource before deciding on manual recovery. Never retry automatically.
+- **Write uncertainty:** inspect the affected resource before deciding on manual recovery. Never retry automatically. A failure before any request byte left (local permit refusal, connection refused, certificate change, credential unavailable) is reported with its own error and audited as `blocked`, not as uncertain.
 - **Stale write lock:** first verify no writer is running. Only an operator should remove `write.lock` from the private directory after investigating the previous operation.
 
 No browser, SSH, or undocumented API fallback is provided.

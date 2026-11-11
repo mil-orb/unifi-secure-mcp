@@ -1,19 +1,21 @@
 import { randomUUID } from 'node:crypto';
-import { operations, byId, validateInput } from './catalog.mjs';
-import { hash } from './security.mjs';
-import { authorize, record, lock } from './permits.mjs';
+import { operations, byId, validateInput, activeSpec } from './catalog.mjs';
+import { hash, secretFields } from './security.mjs';
+import { authorize, record, lock, sharePreview, removePreview } from './permits.mjs';
 export class Plans {
   constructor(
     config,
     client,
     {
       now = Date.now,
-      auth = (o, i) => authorize(config, o, i),
+      auth = (o, i, plan) => authorize(config, o, i, plan),
       audit = (e) => record(config, e),
       acquire = () => lock(config),
+      share = (preview) => sharePreview(config, preview),
+      unshare = (id) => removePreview(config, id),
     } = {},
   ) {
-    Object.assign(this, { config, client, now, auth, audit, acquire });
+    Object.assign(this, { config, client, now, auth, audit, acquire, share, unshare });
     this.plans = new Map();
     this.busy = false;
   }
@@ -56,12 +58,13 @@ export class Plans {
       baseline: readOp ? hash(before) : null,
       expires,
     });
-    return this.client.clean({
+    const shown = this.client.clean({
       planId: id,
       operation: op.id,
       method: op.method,
       path: op.path,
       request: input,
+      sensitiveFields: secretFields(input.body, readOp ? before : undefined),
       before: readOp ? before : undefined,
       expiresAt: new Date(expires).toISOString(),
       confirmation: `APPLY ${id}`,
@@ -75,8 +78,28 @@ export class Plans {
       rollback:
         'No automatic rollback is promised. Some operations are irreversible; prepare an operation-specific recovery plan.',
     });
+    // Best effort: lets the user grant a permit for exactly this request locally.
+    if (!this.config.configured || !this.config.writeEnabled) return shown;
+    try {
+      this.share({
+        planId: id,
+        operation: op.id,
+        method: op.method,
+        path: op.path,
+        siteId: input.path?.siteId,
+        request: shown.request,
+        sensitiveFields: shown.sensitiveFields,
+        requestHash: hash(resolved),
+        expiresAt: shown.expiresAt,
+        specVersion: activeSpec.loaded,
+      });
+      return { ...shown, localPermit: `unifi-secure-mcp permit --plan ${id}` };
+    } catch {
+      return shown;
+    }
   }
   discard(id) {
+    this.unshare(id);
     return { discarded: this.plans.delete(id) };
   }
   async apply(id, confirmation) {
@@ -87,11 +110,14 @@ export class Plans {
     }
     if (confirmation !== `APPLY ${id}`) throw new Error('PLAN_CONFIRMATION');
     const op = byId.get(p.operation);
-    this.auth(op, p.input);
+    // Identifies this exact preview to a plan-bound permit (permit --plan).
+    const binding = { id, requestHash: p.bodyHash };
+    this.auth(op, p.input, binding);
     if (this.busy) throw new Error('WRITE_BUSY');
     const unlock = this.acquire();
     this.busy = true;
     this.plans.delete(id);
+    this.unshare(id);
     let sent = false;
     const event = {
       planId: id,
@@ -110,11 +136,11 @@ export class Plans {
       const resolved = this.client.resolveInput(p.input);
       if (hash(resolved) !== p.bodyHash) throw new Error('STALE_PLAN');
       if (p.expires <= this.now()) throw new Error('PLAN_EXPIRED');
-      this.auth(op, resolved);
+      this.auth(op, resolved, binding);
       this.audit({ ...event, outcome: 'attempt' });
-      this.auth(op, resolved);
+      this.auth(op, resolved, binding);
       sent = true;
-      const result = await this.client.call(op, resolved);
+      const result = await this.client.call(op, resolved, { plan: binding });
       this.audit({ ...event, outcome: 'api-acknowledged' });
       return {
         planId: id,
@@ -125,10 +151,12 @@ export class Plans {
           'The API acknowledged the request. Read the affected resource to verify eventual state; no automatic retry.',
       };
     } catch (e) {
+      // The client marks failures that happened before any request byte left (notSent).
+      const uncertain = sent && !e?.notSent;
       try {
-        this.audit({ ...event, outcome: sent ? 'uncertain' : 'blocked' });
+        this.audit({ ...event, outcome: uncertain ? 'uncertain' : 'blocked' });
       } catch {}
-      if (sent) throw new Error('WRITE_UNCERTAIN');
+      if (uncertain) throw new Error('WRITE_UNCERTAIN');
       throw e;
     } finally {
       this.busy = false;

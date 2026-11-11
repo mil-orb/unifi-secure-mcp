@@ -10,10 +10,40 @@ const notSecret = new Set([
   'revokedauthorization',
   'presharedkeynetworkids',
 ]);
-const isSecretKey = (k) => {
+export const isSecretKey = (k) => {
   const name = k.replace(/[^a-z0-9]/gi, '');
   return secretKey.test(name) && !notSecret.has(name.toLowerCase());
 };
+// Preview aid: every secret-named field of a request body, described without its value
+// as a @secret:NAME reference, a hidden literal, or omitted (set in `before`, absent from
+// the body). Both the body and `before` are redacted in a preview, so one shared marker
+// could not tell these apart.
+export function secretFields(body, before) {
+  const out = [];
+  const join = (at, k) => (at ? `${at}.${k}` : k);
+  const omitted = (prior, at) => {
+    if (!prior || typeof prior !== 'object') return;
+    for (const [k, v] of Object.entries(prior))
+      if (isSecretKey(k)) {
+        if (v !== null && v !== undefined) out.push({ field: join(at, k), value: 'omitted' });
+      } else omitted(v, join(at, k));
+  };
+  const walk = (value, prior, at) => {
+    if (!value || typeof value !== 'object') return;
+    for (const [k, v] of Object.entries(value))
+      if (isSecretKey(k))
+        out.push({
+          field: join(at, k),
+          value: typeof v === 'string' && v.startsWith('@secret:') ? v : 'literal (hidden)',
+        });
+      else walk(v, prior?.[k], join(at, k));
+    if (prior && typeof prior === 'object' && Array.isArray(prior) === Array.isArray(value))
+      for (const [k, v] of Object.entries(prior))
+        if (!Object.hasOwn(value, k)) omitted({ [k]: v }, at);
+  };
+  walk(body, before, '');
+  return out;
+}
 // Router JSON is parsed without a depth limit, but these walks recurse. Far deeper than
 // any documented response, and far below the stack limit.
 const maxDepth = 64;

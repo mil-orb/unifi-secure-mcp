@@ -22,7 +22,7 @@ _Edited, privacy-redacted illustration from an actual conversation. Device detai
 ## What you get
 
 - **Complete coverage of every bundled Network specification:** each read and mutation operation is exposed as a named, validated MCP tool. The bundled versions and their operation counts are listed in [`spec/manifest.json`](spec/manifest.json) and [the operations list](docs/OPERATIONS.md). At startup the server loads the bundled specification that best matches your router; `unifi_status` shows which one.
-- **Read-only execution by default.** Mutation tools prepare five-minute previews. Execution additionally requires write-capable setup, a short-lived operation/site permit, and explicit review.
+- **Read-only execution by default.** Mutation tools prepare five-minute previews. Execution additionally requires write-capable setup, a short-lived local permit (preferably bound to the one previewed request), and explicit review.
 - **Local credentials and pinned TLS.** Hidden key input; Windows current-user DPAPI; no credential tool arguments, public MCP endpoint, telemetry, or browser automation.
 - **MCP tools, resources, and prompts.** Structured JSON results, descriptive schemas, annotations, capability discovery, troubleshooting prompts, and safe Mermaid inventory output. `unifi_explain_path` (read-only) explains which firewall policy would decide traffic between two endpoints, as a configuration model rather than a packet trace. The `unifi_iot_audit` prompt runs a fixed read-only IoT checklist on top of it and proposes fixes without applying them.
 - **A standard local installation.** Official MCP SDK, locked dependencies, STDIO transport, example configurations, tests, CI, and operator documentation.
@@ -126,18 +126,19 @@ See [every operation](docs/OPERATIONS.md). Coverage means the documented operati
 1. Choose `write-capable` during local setup. Execution still starts read-only.
 2. Use the relevant `unifi_api_*` mutation tool to prepare a preview.
 3. Review its exact request, current state, risk, and recovery requirements.
-4. In your own terminal, grant a brief permit for the specific operation and site.
+4. In your own terminal, run the `localPermit` command the preview returns (`permit --plan PLAN_ID`). It shows the exact request and, after you type `YES`, authorizes only that request, once.
 5. Approve `unifi_apply_plan` with the plan ID and exact confirmation phrase.
 6. Read back the affected configuration and revoke the permit.
 
 Example with documentation-only placeholders:
 
 ```sh
+node src/cli.mjs permit --plan PLAN_ID
 node src/cli.mjs permit --site SITE_UUID --operation updateNetwork --minutes 15
 node src/cli.mjs revoke
 ```
 
-Permit creation is intentionally absent from the MCP toolset. Previews are single-use and expire after five minutes; permits expire within at most one hour. Deletes, restarts, port actions and network/security changes can interrupt access or be irreversible. No automatic rollback or write retry is promised.
+Permit creation is intentionally absent from the MCP toolset. Previews are single-use and expire after five minutes; a plan-bound permit expires with its preview, and an operation/site permit within at most one hour. Deletes, restarts, port actions and network/security changes can interrupt access or be irreversible. No automatic rollback or write retry is promised.
 
 ## Honest diagnostics
 

@@ -25,6 +25,7 @@ import { policy, authorize } from './permits.mjs';
 import { ready } from './storage.mjs';
 import { safeError } from './security.mjs';
 import { inventory } from './mermaid.mjs';
+import { explainPath, inputSchema as explainPathSchema } from './pathfinder.mjs';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const annotations = {
   readOnlyHint: true,
@@ -112,6 +113,13 @@ export async function serve(config) {
       inputSchema: input({ siteId: id }),
     },
     {
+      name: 'unifi_explain_path',
+      description:
+        'READ: Explain whether IPv4 traffic from a source (client, IP, network or zone) to a destination (same, or external) would be allowed by the firewall configuration, which policy decides, and which earlier policies might match at runtime. Configuration model only, not a packet trace; the policy order is an assumption to verify in the UniFi UI. GET requests only.',
+      inputSchema: explainPathSchema,
+      annotations: { ...annotations },
+    },
+    {
       name: 'unifi_discard_plan',
       description: 'Discard an in-memory preview without changing UniFi.',
       inputSchema: input({ planId: id }),
@@ -196,6 +204,8 @@ export async function serve(config) {
         if (Object.keys(args).length !== 1 || !uuid.test(args.siteId))
           throw new Error('INPUT_INVALID');
         result = await inventory(client, args.siteId);
+      } else if (name === 'unifi_explain_path') {
+        result = await explainPath(client, args);
       } else if (name === 'unifi_discard_plan') {
         if (Object.keys(args).length !== 1 || !uuid.test(args.planId))
           throw new Error('INPUT_INVALID');

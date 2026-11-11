@@ -10,6 +10,7 @@
 - `scripts/add-spec.mjs` adds a downloaded specification (local file only), updates the manifest, writes a change report to `docs/spec-changes/` (including bold flags for new optional fields that default when omitted), and can prune old specifications after confirmation.
 - `npm run check` takes all counts from the manifest; `docs/OPERATIONS.md` gains a "First bundled in" column; generated reports are drift-checked.
 - Documentation no longer hard-codes one Network version or operation count. Added version-detection setup notes and a `reportFlowEnabled` / Insights Flows note.
+- New read-only helper tool `unifi_explain_path`: resolves an IPv4 source and destination (client, IP, network, zone or external) to firewall zones, walks that zone pair's policies in an assumed effective order, and reports the deciding policy, any earlier policies whose app/category/domain/region/schedule/IPsec or unrecognised filters can only be decided at runtime, and fixed caveats. GET requests only; a configuration model, not a packet trace.
 
 ## 0.2.0
 

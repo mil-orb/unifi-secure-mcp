@@ -30,7 +30,7 @@ This server does not implement HTTP transport, OAuth, multi-user isolation, a mo
 
 ## Reporting and recovery
 
-Do not post a vulnerability with live keys, controller addresses, MACs, SSIDs, screenshots, logs or inventory. Privately contact the repository owner through an already trusted channel with a minimal synthetic reproduction. This private project has no public security-support SLA.
+Do not post a vulnerability with live keys, controller addresses, MACs, SSIDs, screenshots, logs or inventory. Report it privately through this repository's **Security → Report a vulnerability** page, with a minimal synthetic reproduction. This is a community-maintained project with no public security-support SLA.
 
 For suspected credential exposure: revoke the affected key in UniFi, create a replacement through a trusted local workflow, run setup, restart every MCP process, and verify a read. Do not diagnose by printing the key. Revoke permits and inspect controller state after suspected unintended writes.
 

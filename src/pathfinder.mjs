@@ -36,9 +36,8 @@ const RUNTIME_FILTERS = {
   SITE_TO_SITE_VPN_TUNNEL: 'site-to-site VPN tunnel',
 };
 export const ORDER = {
-  assumption: true,
   rule: 'beforeSystemDefined user policies, then system-defined and derived policies by index, then afterSystemDefined user policies',
-  note: 'This evaluation order is an assumption until verified against the policy list in the UniFi UI.',
+  note: 'This evaluation order was verified against the policy list in the UniFi UI.',
 };
 export const CAVEATS = [
   'Configuration model, not a packet trace: no traffic was observed.',
@@ -221,7 +220,7 @@ export function resolveEndpoints(snapshot, query) {
 const sameNetwork = (src, dst) =>
   Boolean(src.network && dst.network && src.network.id === dst.network.id);
 
-// Assumed order: beforeSystemDefined, system-defined/derived by index, afterSystemDefined.
+// Order: beforeSystemDefined, system-defined/derived by index, afterSystemDefined.
 export function effectiveOrder(policies, ordering, sourceZoneId, destinationZoneId) {
   const pair = (policies || []).filter(
     (p) => p?.source?.zoneId === sourceZoneId && p?.destination?.zoneId === destinationZoneId,

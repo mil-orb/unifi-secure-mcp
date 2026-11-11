@@ -98,7 +98,8 @@ test('Internal -> IoT is allowed by a user policy ordered before system policies
   assert.equal(r.destination.zone.name, 'IoT');
   assert.equal(r.destination.network.vlanId, 20);
   assert.deepEqual(r.indeterminateAbove, []);
-  assert.equal(r.order.assumption, true);
+  assert.equal('assumption' in r.order, false);
+  assert.match(r.order.rule, /beforeSystemDefined/);
   assert.ok(r.caveats.some((c) => /not a packet trace/.test(c)));
   assert.ok(r.caveats.some((c) => /mDNS, SSDP/.test(c)));
   assert.ok(r.caveats.some((c) => /Flows/.test(c)));

@@ -191,7 +191,7 @@ export async function serve(config, { detect = true } = {}) {
           {
             name: 'unifi_explain_path',
             description:
-              'READ: Explain whether IPv4 traffic from a source (client, IP, network or zone) to a destination (same, or external) would be allowed by the firewall configuration, which policy decides, and which earlier policies might match at runtime. Configuration model only, not a packet trace; the policy order is an assumption to verify in the UniFi UI. GET requests only.',
+              'READ: Explain whether IPv4 traffic from a source (client, IP, network or zone) to a destination (same, or external) would be allowed by the firewall configuration, which policy decides, and which earlier policies might match at runtime. Configuration model only, not a packet trace; policies are evaluated in the order shown by the UniFi UI. GET requests only.',
             inputSchema: explainPathSchema,
             annotations: { ...annotations },
           },

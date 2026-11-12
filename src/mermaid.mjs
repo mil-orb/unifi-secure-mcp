@@ -51,14 +51,17 @@ export function renderInventory(snapshot) {
     ],
   };
 }
+const inventorySources = [
+  ['devices', 'getAdoptedDeviceOverviewPage'],
+  ['networks', 'getNetworksOverviewPage'],
+  ['wifi', 'getWifiBroadcastPage'],
+  ['zones', 'getFirewallZones'],
+];
+// Every operation inventory() reads; the server offers unifi_mermaid only when all are exposed.
+export const inventoryOperations = Object.freeze(inventorySources.map(([, op]) => op));
 export async function inventory(client, siteId) {
   const snapshot = {};
-  for (const [key, operation] of [
-    ['devices', 'getAdoptedDeviceOverviewPage'],
-    ['networks', 'getNetworksOverviewPage'],
-    ['wifi', 'getWifiBroadcastPage'],
-    ['zones', 'getFirewallZones'],
-  ])
+  for (const [key, operation] of inventorySources)
     snapshot[key] = await client.call(operation, { path: { siteId }, query: { limit: 50 } });
   return renderInventory(snapshot);
 }

@@ -1,0 +1,34 @@
+{
+  "specs": [
+    {
+      "version": "10.6.106",
+      "file": "unifi-network-10.6.106.json",
+      "sha256": "c91054d31bcefa38d7408cb12a975dd660a7304017d781ffdbc884caaf84c75d",
+      "source": "https://developer.ui.com/network/v10.6.106/openapi.json",
+      "official": true,
+      "operations": 73,
+      "reads": 41,
+      "mutations": 32
+    },
+    {
+      "version": "11.0.97",
+      "file": "unifi-network-11.0.97.json",
+      "sha256": "0828aa9f017cce92cd035429c7e19c933d0b3387c561aac17c468b4c2ca8be66",
+      "source": "https://developer.ui.com/network/v11.0.97/openapi.json",
+      "official": true,
+      "operations": 73,
+      "reads": 41,
+      "mutations": 32
+    },
+    {
+      "version": "11.1.47",
+      "file": "unifi-network-11.1.47.json",
+      "sha256": "da4aa34eb932eaecf0d5c53683aa0d0192f70c7ebafc737dc3e3add1c667b08e",
+      "source": "https://github.com/beezly/unifi-apis/blob/main/unifi-network/11.1.47.json",
+      "official": false,
+      "operations": 73,
+      "reads": 41,
+      "mutations": 32
+    }
+  ]
+}

@@ -4,15 +4,23 @@ import { createInterface } from 'node:readline/promises';
 import { Writable } from 'node:stream';
 import tls from 'node:tls';
 import { X509Certificate, randomUUID } from 'node:crypto';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, basename } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
 import { defaultConfigPath, loadConfig, parseOrigin, dataFile } from './config.mjs';
-import { secureDirectory, writePrivate, storeSecret } from './storage.mjs';
-import { grant, revoke, policy } from './permits.mjs';
+import {
+  secureDirectory,
+  writePrivate,
+  storeSecret,
+  reservedSecretName,
+  lastActiveSpec,
+} from './storage.mjs';
+import { grant, grantPlan, readPreview, revoke, policy } from './permits.mjs';
 import { safeError } from './security.mjs';
-import { operations, spec } from './catalog.mjs';
+import { operations, spec, bundledSpecs, activateSpec } from './catalog.mjs';
+import { version } from './version.mjs';
 import { UniFiClient } from './client.mjs';
 import { serve } from './server.mjs';
+import { confirmFingerprint, enrollments, removeEnrollment } from './enrollment.mjs';
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
@@ -20,8 +28,10 @@ const { values, positionals } = parseArgs({
     site: { type: 'string', multiple: true },
     operation: { type: 'string', multiple: true },
     minutes: { type: 'string' },
+    plan: { type: 'string' },
     name: { type: 'string' },
     help: { type: 'boolean' },
+    'no-detect': { type: 'boolean' },
     version: { type: 'boolean' },
   },
 });
@@ -41,9 +51,14 @@ async function prompts() {
   });
   return {
     async ask(question, { secret = false, fallback } = {}) {
-      process.stdout.write(question + (fallback !== undefined ? ` [${fallback}]` : '') + ': ');
+      // readline draws the prompt itself: in terminal mode it clears the current
+      // line first, which would erase a question written separately to stdout.
+      // question() draws synchronously, so muting starts after the prompt is shown.
+      const pending = rl.question(
+        question + (fallback !== undefined ? ` [${fallback}]` : '') + ': ',
+      );
       muted = secret;
-      const answer = await rl.question('');
+      const answer = await pending;
       muted = false;
       if (secret) process.stdout.write('\n');
       return answer.trim() || fallback || '';
@@ -85,7 +100,7 @@ async function setup() {
   const p = await prompts();
   try {
     console.log(
-      'UniFi Secure MCP · local setup · unofficial Ubiquiti integration\nDesigned and verified with UDR7 / Network 10.6.106. No remote MCP listener is installed.\nNever paste credentials into a chat. Setup accepts your key only through hidden local input.',
+      `UniFi Secure MCP ${version} · local setup · unofficial Ubiquiti integration\nBundled Network API schemas: ${bundledSpecs.join(', ')}; the closest match to the router's reported version is selected at startup. No remote MCP listener is installed.\nNever paste credentials into a chat. Setup accepts your key only through hidden local input.`,
     );
     let existing;
     if (existsSync(configPath)) {
@@ -103,18 +118,7 @@ async function setup() {
       }),
     );
     const cert = await enroll(baseUrl);
-    console.log(
-      `\nRouter certificate SHA-256: ${cert.fingerprint256}\nExpires: ${cert.validTo}\nThis public-certificate probe sends NO API key. Compare the fingerprint with the certificate shown by your trusted UniFi browser session.`,
-    );
-    const expected = (await p.ask('Paste the verified SHA-256 fingerprint'))
-      .replace(/[^a-f0-9]/gi, '')
-      .toUpperCase();
-    if (
-      expected !== cert.fingerprint256.replaceAll(':', '') ||
-      Date.parse(cert.validTo) <= Date.now() ||
-      Date.parse(cert.validFrom) > Date.now()
-    )
-      throw new Error('TLS_FAILED');
+    await confirmFingerprint(cert, (q) => p.ask(q), console.log);
     const mode = await p.ask(
       'Access: readonly or write-capable (writes still require a short-lived permit)',
       { fallback: 'readonly' },
@@ -134,27 +138,91 @@ async function setup() {
       credentialStore: process.platform === 'win32' ? 'dpapi' : 'file',
       writeEnabled: mode === 'write-capable',
     };
+    // Only new, empty or application-created folders are restricted (see secureDirectory).
+    const configDir = dirname(configPath);
+    secureDirectory(configDir, {
+      known: [basename(configPath), ...(dirname(dataDir) === configDir ? [basename(dataDir)] : [])],
+    });
     secureDirectory(dataDir);
-    secureDirectory(config.dataDir);
-    secureDirectory(dirname(configPath));
-    writePrivate(dataFile(config, 'router.pem'), cert.toString());
-    storeSecret(config, key);
-    revoke(config);
-    const info = await new UniFiClient({ ...config, configured: true }).call('getInfo', {});
+    let info;
+    try {
+      secureDirectory(config.dataDir);
+      writePrivate(dataFile(config, 'router.pem'), cert.toString());
+      storeSecret(config, key);
+      revoke(config);
+      info = await new UniFiClient({ ...config, configured: true }).call('getInfo', {});
+    } catch (error) {
+      // A failed generation must not leave an API key behind.
+      try {
+        removeEnrollment(dataDir, config.dataDir);
+      } catch {}
+      throw error;
+    }
     writePrivate(configPath, JSON.stringify(config, null, 2));
     console.log(
       `\nSetup verified. Network ${info.applicationVersion || 'connected'}. Mode: read-only${config.writeEnabled ? ' (write tool available; no permit active)' : ''}.\nConfig: ${configPath}\n${process.platform === 'win32' ? 'Key storage: Windows DPAPI, current user.' : 'Key storage: local owner-only file (not encrypted); use an encrypted volume/OS key management for stronger at-rest protection.'}\nRestart your MCP host after registering the server. See docs/SETUP.md for Codex and standard MCP configuration.`,
     );
+    const older = enrollments(dataDir).filter((path) => path !== resolve(config.dataDir));
+    if (older.length) {
+      console.log(
+        `\n${older.length} older enrollment folder(s) remain in ${dataDir}. Each holds a previous API key (encrypted), certificate, permits and audit log. MCP processes still running with the old configuration stop working once they are deleted; restart them.`,
+      );
+      if ((await p.ask('Delete them now? Type DELETE to confirm')) === 'DELETE') {
+        for (const path of older) removeEnrollment(dataDir, path);
+        console.log(`Deleted ${older.length} older enrollment folder(s).`);
+      } else console.log('Kept. Setup offers this again the next time it runs.');
+      console.log('Also revoke the old API keys in UniFi Network > Integrations.');
+    }
   } finally {
     p.close();
   }
 }
+// permit --plan: the human reads the exact previewed request in their own terminal and
+// authorizes only that request, once, until the preview expires.
+async function permitPlan(config, planId) {
+  if (values.site || values.operation || values.minutes !== undefined || !process.stdin.isTTY)
+    throw new Error('INPUT_INVALID');
+  const shared = readPreview(config, planId);
+  if (bundledSpecs.includes(shared.specVersion)) activateSpec(shared.specVersion);
+  const { operation, method, path, siteId, request, sensitiveFields, requestHash } = shared;
+  console.log(
+    JSON.stringify(
+      {
+        planId: shared.planId,
+        operation,
+        method,
+        path,
+        siteId,
+        request,
+        sensitiveFields,
+        requestHash,
+      },
+      null,
+      2,
+    ),
+  );
+  console.log(
+    `\nThis permit authorizes exactly the request above, once, until ${shared.expiresAt}. [REDACTED] hides secret values; sensitiveFields says whether each is a @secret reference, a new literal or omitted. Grant it only if this is the change you asked for.`,
+  );
+  const p = await prompts();
+  let answer;
+  try {
+    answer = await p.ask('Grant a one-time permit for this request? Type YES');
+  } finally {
+    p.close();
+  }
+  if (answer !== 'YES') {
+    console.log('No permit granted.');
+    return;
+  }
+  console.log(JSON.stringify(grantPlan(config, planId, requestHash), null, 2));
+}
 try {
   if (values.version) {
-    console.log('unifi-secure-mcp 0.2.0');
+    console.log(`unifi-secure-mcp ${version}`);
   } else if (values.help || positionals[0] === 'help') {
     console.log(
-      'unifi-secure-mcp <serve|setup|status|operations|permit|revoke|secret> [--config ABSOLUTE_PATH]\n\nsetup       Guided certificate/key/access setup (interactive terminal)\nserve       MCP over STDIO; protocol output only\nstatus      Local access and readiness information\noperations  All operations in the pinned API schema\npermit      --site UUID --operation OPERATION_ID [--minutes 15] (flags repeatable)\nrevoke      Disable all writes immediately\nsecret      --name NAME (hidden local input; use @secret:NAME in request bodies)\n\nDefault: read-only. No insecure TLS flag or credential command-line option.',
+      'unifi-secure-mcp <serve|setup|status|operations|permit|revoke|secret> [--config ABSOLUTE_PATH]\n\nsetup       Guided certificate/key/access setup (interactive terminal)\nserve       MCP over STDIO; protocol output only (--no-detect: skip the startup version read)\nstatus      Local access and readiness information\noperations  All operations in the pinned API schema\npermit      --plan PLAN_ID (interactive: shows that preview, authorizes only it, once)\n            --site UUID --operation OPERATION_ID [--minutes 15] (flags repeatable)\nrevoke      Disable all writes immediately\nsecret      --name NAME (hidden local input; use @secret:NAME in request bodies)\n\nDefault: read-only. No insecure TLS flag or credential command-line option.',
     );
   } else if (positionals[0] === 'setup') await setup();
   else if (positionals[0] === 'operations')
@@ -178,7 +246,7 @@ try {
     const config = loadConfig(configPath);
     switch (positionals[0] || 'serve') {
       case 'serve':
-        await serve(config);
+        await serve(config, { detect: !values['no-detect'] });
         break;
       case 'status':
         console.log(
@@ -196,6 +264,20 @@ try {
         break;
       case 'permit':
         if (!config.configured) throw new Error('SETUP_REQUIRED');
+        if (values.plan !== undefined) {
+          await permitPlan(config, values.plan);
+          break;
+        }
+        {
+          // Validate operation IDs against the schema the server uses: the pin, else the
+          // one the last server start loaded, else the newest bundled one.
+          const last = lastActiveSpec(config);
+          const version = config.specVersion ?? (bundledSpecs.includes(last) ? last : undefined);
+          if (version) activateSpec(version);
+          console.error(
+            `Operation IDs checked against Network API schema ${spec.info.version} (${config.specVersion ? 'pinned in config' : version ? 'loaded by the last server start' : 'newest bundled; no server start recorded yet'}).`,
+          );
+        }
         console.log(
           JSON.stringify(
             grant(config, {
@@ -215,7 +297,7 @@ try {
         break;
       case 'secret': {
         if (!config.configured || !process.stdin.isTTY) throw new Error('SETUP_REQUIRED');
-        if (!values.name || values.name === 'api-key') throw new Error('INPUT_INVALID');
+        if (!values.name || reservedSecretName(values.name)) throw new Error('INPUT_INVALID');
         const p = await prompts();
         try {
           const value = await p.ask('Secret value (hidden)', { secret: true });

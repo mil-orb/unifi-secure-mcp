@@ -3,7 +3,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
-const args = ['serve'];
+import { version } from '../src/version.mjs';
+// Without --live, verification must not contact the router: skip startup version detection.
+const args = process.argv.includes('--live') ? ['serve'] : ['serve', '--no-detect'];
 const index = process.argv.indexOf('--config');
 if (index >= 0) {
   if (!process.argv[index + 1]) throw new Error('Missing config path');
@@ -16,7 +18,7 @@ const transport = new StdioClientTransport({
 });
 // Never forward raw child stderr, which may contain host-specific diagnostics.
 transport.stderr?.on('data', () => {});
-const client = new Client({ name: 'unifi-verifier', version: '0.2.0' });
+const client = new Client({ name: 'unifi-verifier', version });
 async function call(name, arguments_ = {}) {
   const result = await client.callTool({ name, arguments: arguments_ });
   if (result.isError) throw new Error(result.content?.[0]?.text || 'MCP tool failed');

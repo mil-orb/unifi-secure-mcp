@@ -7,18 +7,33 @@ permissions:
 jobs:
   verify:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        node: ['24', '26']
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '24'
+          node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci --ignore-scripts
+      - run: npm run format:check
       - run: npm run check
-      - run: npm test
+      - name: npm test
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee "${RUNNER_TEMP//\\//}/test.log"
+      - name: Show test failures as annotations
+        if: failure()
+        shell: bash
+        run: |
+          log="${RUNNER_TEMP//\\//}/test.log"
+          [ -f "$log" ] || exit 0
+          msg=$(awk '/failing tests:/{f=1} f' "$log" | tr -d '\r' | head -c 3500 | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')
+          echo "::error title=npm test failures::$msg"
       - run: npm run privacy
       - run: npm audit --audit-level=high

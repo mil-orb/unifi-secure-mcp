@@ -36,7 +36,7 @@
 - Previews add `sensitiveFields`: each secret field is shown as a `@secret:NAME` reference, a hidden new literal, or omitted.
 - A write that fails before any request byte is sent (permit refusal, connection refused, certificate change, credential unavailable) is reported with its own error and audited as `blocked` instead of `WRITE_UNCERTAIN`.
 - The `permit` command checks operation IDs against the pinned schema or the one the last server start loaded (recorded as `active-spec.json` in the private directory), and says which.
-- Maintainer note: this release changes `src/plans.mjs` and `src/permits.mjs` (plan-bound permits, `blocked` write outcomes, secret-aware previews) on the maintainer's explicit instruction. `test/permits.test.mjs` and `test/plans.test.mjs` are unchanged, so the original assertions still pass.
+- Note for reviewers: the changes to `src/plans.mjs` and `src/permits.mjs` in this release (plan-bound permits, `blocked` write outcomes, secret-aware previews) were made by the contributor. The existing tests for those files, `test/permits.test.mjs` and `test/plans.test.mjs`, are unchanged, so the original assertions still pass.
 
 ## 0.2.0
 

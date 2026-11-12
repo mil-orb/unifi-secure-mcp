@@ -41,10 +41,10 @@ This project is an **unofficial integration**, unaffiliated with Ubiquiti or Ope
 
 ### 2. Clone and install locked dependencies
 
-Copy this repository's SSH or HTTPS clone URL using GitHub's **Code** button, then clone it into a directory owned by your account. Alternatively, with authenticated GitHub CLI, use:
+Copy this repository's SSH or HTTPS clone URL using GitHub's **Code** button, then clone it into a directory owned by your account. Alternatively, with authenticated GitHub CLI, replace `OWNER` with this repository's owner:
 
 ```sh
-gh repo clone SpankMyFrank/unifi-secure-mcp
+gh repo clone OWNER/unifi-secure-mcp
 cd unifi-secure-mcp
 npm ci --ignore-scripts
 ```

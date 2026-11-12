@@ -114,7 +114,8 @@ export async function withSimulator(
       diagnostics = (diagnostics + chunk.toString()).slice(-4096);
     });
     try {
-      await client.connect(transport);
+      // The first server start on a cold Windows runner can exceed the SDK's 60 s default.
+      await client.connect(transport, { timeout: 240000 });
     } catch {
       throw new Error(
         Object.values(messages).find((message) => diagnostics.includes(message)) ||

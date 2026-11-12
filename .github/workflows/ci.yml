@@ -12,7 +12,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         node: ['24', '26']
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -22,6 +22,16 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run format:check
       - run: npm run check
+      - name: Time PowerShell start-up (Windows diagnostics)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          foreach ($i in 1..3) {
+            $t = Measure-Command { powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command 'exit 0' }
+            "start-up run ${i}: $([int]$t.TotalMilliseconds) ms"
+          }
+          $t = Measure-Command { powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command 'Get-Acl -LiteralPath $env:TEMP | Out-Null' }
+          "Get-Acl on temp: $([int]$t.TotalMilliseconds) ms"
       - run: npm test
       - run: npm run privacy
       - run: npm audit --audit-level=high

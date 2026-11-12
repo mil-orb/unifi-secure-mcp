@@ -58,7 +58,7 @@ export function secureDirectory(path, { known = [] } = {}) {
     runPowerShell(
       'protect-data.ps1',
       ['-Path', path],
-      { stdio: ['ignore', 'pipe', 'pipe'], timeout: 15000 },
+      { stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000 },
       'INSECURE_FILE',
     );
 }
@@ -89,7 +89,7 @@ export function storeSecret(config, value, name = 'api-key') {
     runPowerShell(
       'secret.ps1',
       ['-Mode', 'Store', '-Path', path],
-      { input: value, stdio: ['pipe', 'pipe', 'pipe'], timeout: 10000, maxBuffer: 16384 },
+      { input: value, stdio: ['pipe', 'pipe', 'pipe'], timeout: 60000, maxBuffer: 16384 },
       'SECRET_UNAVAILABLE',
     );
   else writePrivate(path, value);
@@ -110,7 +110,7 @@ export function readSecret(config, name = 'api-key') {
             {
               encoding: 'utf8',
               stdio: ['ignore', 'pipe', 'pipe'],
-              timeout: 10000,
+              timeout: 60000,
               maxBuffer: 16384,
             },
             'SECRET_UNAVAILABLE',

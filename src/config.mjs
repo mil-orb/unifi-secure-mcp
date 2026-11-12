@@ -60,7 +60,7 @@ export function loadConfig(path = process.env.UNIFI_MCP_CONFIG || defaultConfigP
     runPowerShell(
       'check-private.ps1',
       ['-ConfigPath', path, '-DataDirectory', data.dataDir],
-      { stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000 },
+      { stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000 },
       'INSECURE_FILE',
       'PERMISSION_CHECK_TIMEOUT',
     );

@@ -87,6 +87,67 @@ test('the keyword guard reports unsupported constructs with JSON paths', () => {
   assert.equal(more.length, 5, more.join('\n'));
 });
 
+test('the guard rejects path keys that could leave the integration API', () => {
+  const spec = readJson(fixture('synthetic-11.1.0.json'));
+  const item = spec.paths['/v1/sites/{siteId}/widgets'];
+  const escaping = [
+    '/../../../api/foo',
+    '/v1/./sites',
+    '/v1/%2e%2e/api',
+    '/v1\\..\\api',
+    'v1/sites',
+    '/v1//sites',
+  ];
+  for (const path of escaping) spec.paths[path] = item;
+  const findings = auditSpec(spec);
+  for (const path of escaping)
+    assert.ok(
+      findings.some(
+        (f) =>
+          f.endsWith(': path must be plain "/segment" or "/{param}" parts') &&
+          f.includes(path.replace(/~/g, '~0').replace(/\//g, '~1')),
+      ),
+      `${path}\n${findings.join('\n')}`,
+    );
+  assert.equal(
+    new URL('/proxy/network/integration' + escaping[0], 'https://example.invalid').pathname,
+    '/api/foo',
+    'URL parsing normalizes the escape that the guard prevents',
+  );
+});
+
+test('the guard rejects documented operations the catalog cannot register', () => {
+  const spec = readJson(fixture('synthetic-11.1.0.json'));
+  const item = spec.paths['/v1/sites/{siteId}/widgets'];
+  item.head = { ...item.get, operationId: 'headWidgetPage' };
+  item.options = { ...item.get, operationId: 'optionsWidgetPage' };
+  const findings = auditSpec(spec);
+  for (const method of ['head', 'options'])
+    assert.ok(
+      findings.includes(
+        `#/paths/~1v1~1sites~1{siteId}~1widgets/${method}: HTTP method "${method}" is not supported`,
+      ),
+      findings.join('\n'),
+    );
+  // Without an operationId nothing would be registered or claimed; it stays allowed.
+  delete item.head.operationId;
+  delete item.options.operationId;
+  assert.deepEqual(auditSpec(spec), []);
+});
+
+test('an operation-level parameter overrides the path-level one with the same name', () => {
+  const spec = readJson(fixture('synthetic-11.1.0.json'));
+  const item = spec.paths['/v1/sites/{siteId}/widgets'];
+  item.parameters = [
+    { name: 'limit', in: 'query', required: true, schema: { type: 'integer', minimum: 1 } },
+  ];
+  const op = buildCatalog(spec).operations.find((o) => o.id === 'getWidgetPage');
+  const siteId = '00000000-0000-4000-8000-000000000001';
+  assert.ok(op.validate({ path: { siteId } }), 'the operation made limit optional');
+  assert.ok(op.validate({ path: { siteId }, query: { limit: 5 } }));
+  assert.ok(!op.validate({ path: { siteId }, query: { limit: 500 } }), 'operation maximum applies');
+});
+
 test('an 11.1.99 fixture is added cleanly with one command and a review report', () => {
   const root = tempRoot();
   bundle(root, ['11.1.0']);
@@ -137,8 +198,25 @@ test('an 11.1.99 fixture is added cleanly with one command and a review report',
   assert.match(conflict.stderr, /--replace/);
   const replaced = run('add-spec.mjs', [altered, '--replace', '--root', root]);
   assert.equal(replaced.status, 0, replaced.stderr);
-  assert.equal(readJson(join(root, 'spec', 'manifest.json')).specs[1].official, true);
+  // New bytes without a new --source do not inherit the old copy's provenance.
+  let entry = readJson(join(root, 'spec', 'manifest.json')).specs[1];
+  assert.equal(entry.official, false);
+  assert.match(entry.source, /^unrecorded/);
   assert.equal(run('check.mjs', ['--spec-dir', join(root, 'spec')]).status, 0);
+  const restored = run('add-spec.mjs', [
+    fixture('synthetic-11.1.99.json'),
+    '--replace',
+    '--source',
+    'https://developer.ui.com/network/v11.1.99/openapi.json',
+    '--root',
+    root,
+  ]);
+  assert.equal(restored.status, 0, restored.stderr);
+  entry = readJson(join(root, 'spec', 'manifest.json')).specs[1];
+  assert.equal(entry.official, true);
+  // Same bytes again without --source keep the recorded provenance.
+  assert.equal(run('add-spec.mjs', [fixture('synthetic-11.1.99.json'), '--root', root]).status, 0);
+  assert.equal(readJson(join(root, 'spec', 'manifest.json')).specs[1].official, true);
 });
 
 test('a spec with an unknown keyword is refused by add-spec and fails the check', () => {

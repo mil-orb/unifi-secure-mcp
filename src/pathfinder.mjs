@@ -221,7 +221,15 @@ const sameNetwork = (src, dst) =>
   Boolean(src.network && dst.network && src.network.id === dst.network.id);
 
 // Order: beforeSystemDefined, system-defined/derived by index, afterSystemDefined.
-export function effectiveOrder(policies, ordering, sourceZoneId, destinationZoneId) {
+// complete=false: the policy list was capped, so an ordered id that is absent may be a
+// policy of this zone pair that was not read; it keeps its place as a missing row.
+export function effectiveOrder(
+  policies,
+  ordering,
+  sourceZoneId,
+  destinationZoneId,
+  { complete = true } = {},
+) {
   const pair = (policies || []).filter(
     (p) => p?.source?.zoneId === sourceZoneId && p?.destination?.zoneId === destinationZoneId,
   );
@@ -229,9 +237,13 @@ export function effectiveOrder(policies, ordering, sourceZoneId, destinationZone
     used = new Set(),
     rows = [];
   const take = (id, stage) => {
-    if (byId.has(id) && !used.has(id)) {
+    if (used.has(id)) return;
+    if (byId.has(id)) {
       used.add(id);
       rows.push({ policy: byId.get(id), stage });
+    } else if (!complete && stage !== 'systemDefined') {
+      used.add(id);
+      rows.push({ policy: null, id, stage });
     }
   };
   const index = (p) => (Number.isSafeInteger(p.index) ? p.index : Number.MAX_SAFE_INTEGER);
@@ -264,6 +276,11 @@ function protocolCheck(f, q) {
     hit = (x) => PROTOCOL_NUMBERS[x] === f.protocolNumber;
   else return maybe(`unrecognised protocol filter ${label(f.type)}`);
   if (q === 'ANY') return maybe('policy filters by protocol; query protocol is ANY');
+  // The query has no ICMP type, so a type-restricted rule can neither match nor miss.
+  if (hit(q) && typeof f.typenameFilter === 'string')
+    return maybe(
+      `policy matches only ICMP type ${label(f.typenameFilter)}; query has no ICMP type`,
+    );
   return opposite(hit(q), f, 'protocol does not match');
 }
 function scopeCheck(p, { query }) {
@@ -362,13 +379,10 @@ function filterChecks(tf, side, ctx) {
     case 'IPV6_IID':
       return [no(`${side} IPv6 interface-identifier filter; query is IPv4`)];
     default:
-      return [
-        maybe(
-          RUNTIME_FILTERS[tf.type]
-            ? `${side} ${RUNTIME_FILTERS[tf.type]} filter is decided at runtime`
-            : `unrecognised ${side} filter type ${label(tf.type)}`,
-        ),
-      ];
+      if (!RUNTIME_FILTERS[tf.type])
+        return [maybe(`unrecognised ${side} filter type ${label(tf.type)}`)];
+      // Decided at runtime, but its static port/MAC constraints can still rule it out.
+      out.push(maybe(`${side} ${RUNTIME_FILTERS[tf.type]} filter is decided at runtime`));
   }
   if (tf.type !== 'MAC_ADDRESS' && typeof tf.macAddressFilter === 'string')
     out.push(macCheck([tf.macAddressFilter], ep, side));
@@ -493,29 +507,33 @@ export function explain(snapshot, query) {
         'The source network has internet access disabled.',
       ),
     );
-  const isolated = [src, dst].find((e) => e.network?.isolationEnabled === true);
-  if (isolated && src.network && dst.network)
-    return Object.assign(
-      result,
-      setting(
-        isolated.network,
-        'isolationEnabled',
-        'A network on this path has isolation enabled. This verdict is inferred from the network setting, not from a listed policy (assumption).',
-      ),
-    );
+  // Isolation is enforced at the system-defined stage, so user policies ordered
+  // before system-defined ones are evaluated first and can override it.
+  const isolated = [src, dst].find((e) => e.network?.isolationEnabled === true),
+    isolation = Boolean(isolated && src.network && dst.network);
   const lists = new Map((snapshot.trafficMatchingLists || []).map((l) => [l.id, l]));
   const ctx = { query, src, dst, lists };
-  const rows = effectiveOrder(snapshot.policies, snapshot.ordering, src.zone.id, dst.zone.id);
+  const rows = effectiveOrder(snapshot.policies, snapshot.ordering, src.zone.id, dst.zone.id, {
+    complete: result.policiesComplete,
+  });
   let decided = null;
-  for (const [i, { policy, stage }] of rows.entries()) {
-    const { result: outcome, reasons } = evaluatePolicy(policy, ctx);
+  for (const [i, { policy, id, stage }] of rows.entries()) {
+    if (isolation && stage !== 'beforeSystemDefined') break;
+    const { result: outcome, reasons } = policy
+      ? evaluatePolicy(policy, ctx)
+      : {
+          result: 'indeterminate',
+          reasons: [
+            `policy is ordered here but was not read (only the first ${POLICY_CAP} are read)`,
+          ],
+        };
     const row = {
       order: i + 1,
       stage,
-      id: safeId(policy.id),
-      name: label(policy.name),
-      origin: label(policy.metadata?.origin),
-      action: label(policy.action?.type),
+      id: safeId(policy ? policy.id : id),
+      name: policy ? label(policy.name) : null,
+      origin: policy ? label(policy.metadata?.origin) : null,
+      action: policy ? label(policy.action?.type) : null,
       result: outcome,
       reasons,
     };
@@ -534,6 +552,19 @@ export function explain(snapshot, query) {
       ? decided.action
       : 'UNDETERMINED';
     result.decidedBy = { type: 'POLICY', ...decided };
+    if (result.indeterminateAbove.length)
+      result.caveats.push(
+        'Policies listed in indeterminateAbove could match first at runtime and change this verdict.',
+      );
+  } else if (isolation) {
+    Object.assign(
+      result,
+      setting(
+        isolated.network,
+        'isolationEnabled',
+        'A network on this path has isolation enabled and no user policy ordered before system-defined policies matched. This verdict is inferred from the network setting, not from a listed policy (assumption).',
+      ),
+    );
     if (result.indeterminateAbove.length)
       result.caveats.push(
         'Policies listed in indeterminateAbove could match first at runtime and change this verdict.',

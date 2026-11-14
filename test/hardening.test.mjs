@@ -16,7 +16,13 @@ import {
 import { tmpdir, homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { secureDirectory, writePrivate, privateMarker } from '../src/storage.mjs';
+import {
+  secureDirectory,
+  writePrivate,
+  privateMarker,
+  storeSecret,
+  readSecret,
+} from '../src/storage.mjs';
 import { loadConfig } from '../src/config.mjs';
 import { UniFiClient } from '../src/client.mjs';
 import { redact, hash, canonical, tlsError, safeError, messages } from '../src/security.mjs';
@@ -81,6 +87,43 @@ test('M3: privacy scans unstaged edits, untracked files and the index', (t) => {
   assert.match(r.out, /src\/new\.mjs: possible deployment address/);
 });
 
+test('privacy rejects symbolic links staged in the index, including dangling ones', (t) => {
+  const repo = temp(t);
+  const git = (...args) =>
+    execFileSync(
+      'git',
+      ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...args],
+      { stdio: 'ignore' },
+    );
+  mkdirSync(join(repo, 'scripts'));
+  mkdirSync(join(repo, 'docs'));
+  copyFileSync(join(root, 'scripts/privacy.mjs'), join(repo, 'scripts/privacy.mjs'));
+  writeFileSync(join(repo, 'README.md'), 'clean\n');
+  writeFileSync(join(repo, 'docs/present.md'), 'clean\n');
+  git('init', '-q');
+  git('add', '.');
+  const scan = () => {
+    const r = spawnSync(process.execPath, [join(repo, 'scripts/privacy.mjs')], {
+      encoding: 'utf8',
+    });
+    return { status: r.status, out: r.stdout + r.stderr };
+  };
+  assert.equal(scan().status, 0);
+  // Mode 120000 entries whose targets are missing (dangling) and present; neither
+  // exists as a link in this working tree, as on a Windows checkout without symlinks.
+  const blob = execFileSync('git', ['-C', repo, 'hash-object', '-w', '--stdin'], {
+    input: 'docs/absent.md',
+    encoding: 'utf8',
+  }).trim();
+  git('update-index', '--add', '--cacheinfo', `120000,${blob},docs/dangling.md`);
+  git('update-index', '--add', '--cacheinfo', `120000,${blob},docs/link.md`);
+  writeFileSync(join(repo, 'docs/link.md'), 'clean\n');
+  const r = scan();
+  assert.equal(r.status, 1);
+  assert.match(r.out, /docs\/dangling\.md: symbolic link/);
+  assert.match(r.out, /docs\/link\.md: symbolic link/);
+});
+
 test('M4: setup restricts only new, empty, marked or application-created folders', (t) => {
   const base = temp(t);
   const unrelated = join(base, 'Documents');
@@ -135,6 +178,7 @@ test('L1/I4: PowerShell is found under SystemRoot and its failures are told apar
   assert.equal(powershellError({ status: 2 }, 'INSECURE_FILE'), 'INSECURE_FILE');
   assert.equal(powershellError({ status: 1 }, 'INSECURE_FILE'), 'POWERSHELL_BLOCKED');
   assert.equal(powershellError({ code: 'ENOENT' }, 'INSECURE_FILE'), 'POWERSHELL_BLOCKED');
+  assert.equal(powershellError({ code: 'ENOBUFS' }, 'INSECURE_FILE'), 'INSECURE_FILE');
   assert.equal(
     powershellError({ code: 'ETIMEDOUT' }, 'INSECURE_FILE', 'PERMISSION_CHECK_TIMEOUT'),
     'PERMISSION_CHECK_TIMEOUT',
@@ -163,12 +207,28 @@ test('L1/I4: PowerShell is found under SystemRoot and its failures are told apar
 });
 
 test('L11: the DPAPI pipe uses UTF-8 byte streams, not the console code page', () => {
-  // Static check only. Fixed, not runtime-verified with a non-ASCII secret.
+  // Runtime round trip on Windows: the next test.
   const script = readFileSync(join(root, 'scripts/secret.ps1'), 'utf8');
   for (const needle of ['UTF8Encoding', 'OpenStandardInput()', 'OpenStandardOutput()'])
     assert.ok(script.includes(needle), needle);
   assert.ok(!/\[Console\]::(?:In|Out)\./.test(script));
 });
+
+test(
+  'L11: a non-ASCII secret of the maximum accepted length round-trips through DPAPI',
+  { skip: process.platform !== 'win32' && 'DPAPI is Windows-only' },
+  (t) => {
+    const config = { configured: true, credentialStore: 'dpapi', dataDir: join(temp(t), 'data') };
+    // Three UTF-8 bytes per character: 8192 characters are 24576 bytes on the pipe.
+    for (const [name, value] of [
+      ['mixed', 'synthetic-é-€-𝄞-ü'],
+      ['widest', '€'.repeat(8192)],
+    ]) {
+      storeSecret(config, value, name);
+      assert.equal(readSecret(config, name), value, name);
+    }
+  },
+);
 
 // One synthetic CA, a leaf it issued (served with the chain), and a pinned client.
 async function withChainServer(t, run) {

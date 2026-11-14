@@ -119,7 +119,11 @@ if (opts.file) {
       die(
         `${version} is already bundled with different content. Re-run with --replace if you intend to swap it (for example, an official copy for a mirror copy).`,
       );
-    const source = opts.source ?? existing?.source ?? 'unrecorded (added from a local file)';
+    // Provenance belongs to the bytes: replaced content without a new --source is
+    // unrecorded, never attributed to the copy it replaced.
+    const source =
+      opts.source ??
+      (existing?.sha256 === sha256 ? existing.source : 'unrecorded (added from a local file)');
     const entry = {
       version,
       file: `unifi-network-${version}.json`,

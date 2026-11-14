@@ -26,6 +26,8 @@ export const powershellArgs = (script, args = []) => [
 // means PowerShell could not run the script (execution policy, blocked download).
 export function powershellError(error, failure, timeout = failure) {
   if (error?.code === 'ETIMEDOUT') return timeout;
+  // Output larger than maxBuffer: the script ran, so this is not a blocked PowerShell.
+  if (error?.code === 'ENOBUFS') return failure;
   return error?.status === 2 ? failure : 'POWERSHELL_BLOCKED';
 }
 export function runPowerShell(script, args, options, failure, timeout) {

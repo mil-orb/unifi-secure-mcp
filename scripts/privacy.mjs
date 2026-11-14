@@ -1,5 +1,5 @@
 // Defense in depth, not a guarantee. Review changes before publishing.
-import { readdirSync, readFileSync, existsSync, lstatSync } from 'node:fs';
+import { readdirSync, readFileSync, lstatSync } from 'node:fs';
 import { resolve, relative, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -44,9 +44,17 @@ const list = (args) =>
     .filter(Boolean);
 let files,
   indexed = new Set(),
+  links = new Set(),
   fromGit = false;
 try {
-  indexed = new Set(list(['ls-files', '--cached']));
+  // "<mode> <object> <stage>\t<path>"; mode 120000 is a symbolic link in the index,
+  // which a checkout recreates even when this working tree holds no link.
+  for (const entry of list(['ls-files', '--stage'])) {
+    const tab = entry.indexOf('\t');
+    const path = entry.slice(tab + 1);
+    indexed.add(path);
+    if (entry.startsWith('120000 ')) links.add(path);
+  }
   files = [...new Set([...indexed, ...list(['ls-files', '--others', '--exclude-standard'])])];
   fromGit = true;
 } catch {
@@ -56,13 +64,15 @@ if (!files.length) throw new Error('No source files selected for scanning');
 const findings = new Set();
 const versions = (path) => {
   const found = [];
+  // lstat, not existsSync: existsSync follows the link, so a dangling one looks absent.
+  const local = resolve(root, path),
+    stat = lstatSync(local, { throwIfNoEntry: false });
+  if (links.has(path) || stat?.isSymbolicLink()) {
+    findings.add(`${path}: symbolic link`);
+    return found;
+  }
   if (fromGit && indexed.has(path)) found.push(git(['show', ':' + path]));
-  const local = resolve(root, path);
-  if (existsSync(local)) {
-    if (lstatSync(local).isSymbolicLink()) {
-      findings.add(`${path}: symbolic link`);
-      return found;
-    }
+  if (stat) {
     const bytes = readFileSync(local);
     if (!found.some((b) => b.equals(bytes))) found.push(bytes);
   }

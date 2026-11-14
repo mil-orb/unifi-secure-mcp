@@ -24,6 +24,10 @@ export const privateMarker = '.unifi-secure-mcp-private';
 // Names this application creates. Folders from 0.3.0 and earlier carry no marker.
 const ownEntry =
   /^(?:\.unifi-secure-mcp-private|enrollment-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|router\.pem|permit\.json|audit\.jsonl|write\.lock|active-spec\.json|preview-[0-9a-f-]{36}\.json|[a-z0-9_-]{1,64}\.(?:dpapi|secret)|.+\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp)$/i;
+// Secrets are limited in UTF-16 code units; the DPAPI read pipe carries UTF-8, which
+// needs up to 3 bytes per code unit (a surrogate pair is 4 bytes for 2 units).
+const SECRET_MAX = 8192,
+  SECRET_MAX_BYTES = SECRET_MAX * 3;
 const pathKey = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
 // known: extra entry names the caller expects (the config file, the data directory).
 export function secureDirectory(path, { known = [] } = {}) {
@@ -78,7 +82,10 @@ export function storeSecret(config, value, name = 'api-key') {
     !/^[a-zA-Z0-9_-]{1,64}$/.test(name) ||
     typeof value !== 'string' ||
     !value ||
-    value.length > 8192
+    value.length > SECRET_MAX ||
+    // A stored reference would be resolved a second time when the request is sent,
+    // after the preview and permit were checked against the first resolution.
+    value.startsWith('@secret:')
   )
     throw new Error('SECRET_UNAVAILABLE');
   const suffix = config.credentialStore === 'dpapi' ? '.dpapi' : '.secret';
@@ -111,12 +118,12 @@ export function readSecret(config, name = 'api-key') {
               encoding: 'utf8',
               stdio: ['ignore', 'pipe', 'pipe'],
               timeout: 60000,
-              maxBuffer: 16384,
+              maxBuffer: SECRET_MAX_BYTES,
             },
             'SECRET_UNAVAILABLE',
           )
         : readFileSync(path, 'utf8');
-    if (!value || value.length > 8192) throw new Error();
+    if (!value || value.length > SECRET_MAX) throw new Error();
     return value;
   } catch (error) {
     // A script PowerShell refused to run is reported as such, not as a missing key.

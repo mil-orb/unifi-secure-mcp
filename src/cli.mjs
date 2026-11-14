@@ -165,7 +165,7 @@ async function setup() {
     const older = enrollments(dataDir).filter((path) => path !== resolve(config.dataDir));
     if (older.length) {
       console.log(
-        `\n${older.length} older enrollment folder(s) remain in ${dataDir}. Each holds a previous API key (encrypted), certificate, permits and audit log. MCP processes still running with the old configuration stop working once they are deleted; restart them.`,
+        `\n${older.length} older enrollment folder(s) remain in ${dataDir}. Each holds a previous API key (${process.platform === 'win32' ? 'DPAPI-encrypted' : 'owner-only file, not encrypted'}), certificate, permits and audit log. MCP processes still running with the old configuration stop working once they are deleted; restart them.`,
       );
       if ((await p.ask('Delete them now? Type DELETE to confirm')) === 'DELETE') {
         for (const path of older) removeEnrollment(dataDir, path);

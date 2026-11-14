@@ -126,7 +126,7 @@ See [every operation](docs/OPERATIONS.md). Coverage means the documented operati
 1. Choose `write-capable` during local setup. Execution still starts read-only.
 2. Use the relevant `unifi_api_*` mutation tool to prepare a preview.
 3. Review its exact request, current state, risk, and recovery requirements.
-4. In your own terminal, run the `localPermit` command the preview returns (`permit --plan PLAN_ID`). It shows the exact request and, after you type `YES`, authorizes only that request, once.
+4. In your own terminal, run the `localPermit` command the preview returns (`unifi-secure-mcp permit --plan PLAN_ID`). From a checkout without a linked `unifi-secure-mcp` command, run it as `node src/cli.mjs permit --plan PLAN_ID`. It shows the exact request and, after you type `YES`, authorizes only that request, once.
 5. Approve `unifi_apply_plan` with the plan ID and exact confirmation phrase.
 6. Read back the affected configuration and revoke the permit.
 

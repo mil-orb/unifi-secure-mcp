@@ -73,13 +73,13 @@ Hosted ChatGPT Work/web does not automatically receive local STDIO access. Avail
 
 Mutation operation tools create previews even while execution is read-only. Their `readOnlyHint` describes their actual behavior: previewing performs reads and stores only transient local state. `unifi_apply_plan` is explicitly annotated as potentially destructive. Annotations inform hosts; the server enforces authorization separately.
 
-After reviewing a preview, authorize exactly that request locally. With write-capable configuration, each preview returns `localPermit`, a command such as:
+After reviewing a preview, authorize exactly that request locally. With write-capable configuration, each preview returns `localPermit`, a command such as `unifi-secure-mcp permit --plan PLAN_ID`. From a checkout, where that command is not on your PATH, run the same thing as:
 
 ```sh
 node src/cli.mjs permit --plan PLAN_ID
 ```
 
-Run it in your own interactive terminal. It prints the request as the server previewed it (secret values hidden; `sensitiveFields` says whether each secret field is a `@secret:NAME` reference, a new literal or omitted) and its request hash, then asks you to type `YES`. The resulting permit names that plan and request hash only: the model cannot apply a different body, another plan, or the same plan twice under it, and it expires with the preview (five minutes). The server stores each preview for this purpose as `preview-PLAN_ID.json` in the private data directory (redacted request, operation, site and hash) and deletes it when the plan is applied, discarded or expired.
+Run it in your own interactive terminal. It prints the request as the server previewed it (secret values hidden; `sensitiveFields` says whether each secret field is a `@secret:NAME` reference, a new literal or omitted) and its request hash, then asks you to type `YES`. The resulting permit names that plan and request hash only: the model cannot apply a different body, another plan, or the same plan twice under it, and it expires with the preview (five minutes). The server stores each preview for this purpose as `preview-PLAN_ID.json` in the private data directory (redacted request, operation, site and hash) and deletes it when the plan is applied or discarded. An expired preview file is deleted the next time a preview is created, not at the moment it expires; it can no longer be permitted or applied either way.
 
 The broader operation/site permit remains available when you need it, for example for several changes in a row:
 

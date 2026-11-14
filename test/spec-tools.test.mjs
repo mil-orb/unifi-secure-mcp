@@ -87,6 +87,35 @@ test('the keyword guard reports unsupported constructs with JSON paths', () => {
   assert.equal(more.length, 5, more.join('\n'));
 });
 
+test('the guard rejects path keys that could leave the integration API', () => {
+  const spec = readJson(fixture('synthetic-11.1.0.json'));
+  const item = spec.paths['/v1/sites/{siteId}/widgets'];
+  const escaping = [
+    '/../../../api/foo',
+    '/v1/./sites',
+    '/v1/%2e%2e/api',
+    '/v1\\..\\api',
+    'v1/sites',
+    '/v1//sites',
+  ];
+  for (const path of escaping) spec.paths[path] = item;
+  const findings = auditSpec(spec);
+  for (const path of escaping)
+    assert.ok(
+      findings.some(
+        (f) =>
+          f.endsWith(': path must be plain "/segment" or "/{param}" parts') &&
+          f.includes(path.replace(/~/g, '~0').replace(/\//g, '~1')),
+      ),
+      `${path}\n${findings.join('\n')}`,
+    );
+  assert.equal(
+    new URL('/proxy/network/integration' + escaping[0], 'https://example.invalid').pathname,
+    '/api/foo',
+    'URL parsing normalizes the escape that the guard prevents',
+  );
+});
+
 test('an 11.1.99 fixture is added cleanly with one command and a review report', () => {
   const root = tempRoot();
   bundle(root, ['11.1.0']);

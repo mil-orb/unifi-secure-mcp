@@ -251,6 +251,7 @@ const ANNOTATIONS = new Set([
 const ALLOF_MERGED = new Set(['$ref', 'allOf', 'type', 'properties', 'required', 'discriminator']);
 const TYPES = new Set(['object', 'array', 'string', 'number', 'integer', 'boolean', 'null']);
 const SCHEMA_REF = '#/components/schemas/';
+const SAFE_PATH = /^(?:\/(?:[A-Za-z0-9_-]+|\{[A-Za-z0-9_]+\}))+$/;
 const pointer = (parts) =>
   '#/' + parts.map((p) => String(p).replace(/~/g, '~0').replace(/\//g, '~1')).join('/');
 // Lists every construct buildCatalog()/normalize() would not enforce faithfully, as
@@ -320,6 +321,11 @@ export function auditSpec(source) {
   for (const [name, schema] of Object.entries(schemas))
     visit(schema, ['components', 'schemas', name]);
   for (const [path, item] of Object.entries(source.paths || {})) {
+    // buildRequest appends the path to /proxy/network/integration and URL parsing
+    // normalizes dot segments, "%2e" and backslashes, so only plain segments may
+    // appear; anything else could send the API key outside the integration API.
+    if (!SAFE_PATH.test(path))
+      add(['paths', path], 'path must be plain "/segment" or "/{param}" parts');
     const params = (list, parts) =>
       (list || []).forEach((p, i) => {
         if (!p || !['path', 'query'].includes(p.in) || typeof p.name !== 'string' || !p.schema)

@@ -7,7 +7,8 @@ import { bundledSpecs, compileSpec, byId, validateInput } from '../src/catalog.m
 import { Plans } from '../src/plans.mjs';
 import { UniFiClient } from '../src/client.mjs';
 import { redact, safeError } from '../src/security.mjs';
-import { reservedSecretName } from '../src/storage.mjs';
+import { reservedSecretName, storeSecret, writePrivate } from '../src/storage.mjs';
+import { dataFile } from '../src/config.mjs';
 import { collect, readOperations } from '../src/pathfinder.mjs';
 import { inventory, inventoryOperations } from '../src/mermaid.mjs';
 // Synthetic identifiers and documentation-range addresses, built at runtime.
@@ -141,6 +142,28 @@ test('@secret:api-key (any case) cannot be resolved into a request body', () => 
         client.resolveInput({ path: { siteId }, body: { description: '@secret:wifi_password' } }),
       /SECRET_UNAVAILABLE/,
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a stored secret whose value is a @secret reference is refused, not resolved twice', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'unifi-mcp-test-'));
+  try {
+    const config = { configured: true, credentialStore: 'file', dataDir: dir };
+    storeSecret(config, 'synthetic-other-value', 'other');
+    assert.throws(() => storeSecret(config, '@secret:other', 'chained'), /SECRET_UNAVAILABLE/);
+    // A value stored before this check existed is refused when resolved, so the body
+    // that is hashed for the preview and permit is the body that is sent.
+    writePrivate(dataFile(config, 'chained.secret'), '@secret:other');
+    const client = new UniFiClient(config);
+    assert.throws(
+      () => client.resolveInput({ path: { siteId }, body: { description: '@secret:chained' } }),
+      /SECRET_UNAVAILABLE/,
+    );
+    const once = client.resolveInput({ path: { siteId }, body: { description: '@secret:other' } });
+    assert.equal(once.body.description, 'synthetic-other-value');
+    assert.deepEqual(client.resolveInput(once), once, 'a resolved body is stable');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

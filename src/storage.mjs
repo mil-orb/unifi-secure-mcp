@@ -78,7 +78,10 @@ export function storeSecret(config, value, name = 'api-key') {
     !/^[a-zA-Z0-9_-]{1,64}$/.test(name) ||
     typeof value !== 'string' ||
     !value ||
-    value.length > 8192
+    value.length > 8192 ||
+    // A stored reference would be resolved a second time when the request is sent,
+    // after the preview and permit were checked against the first resolution.
+    value.startsWith('@secret:')
   )
     throw new Error('SECRET_UNAVAILABLE');
   const suffix = config.credentialStore === 'dpapi' ? '.dpapi' : '.secret';

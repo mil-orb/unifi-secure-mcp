@@ -39,6 +39,9 @@ export class UniFiClient {
       // The UniFi API key must never be copied into router configuration.
       if (reservedSecretName(value.slice(8))) throw new Error('INPUT_INVALID');
       const secret = readSecret(this.config, value.slice(8));
+      // Resolution is single-step: a secret whose value is itself a reference would
+      // resolve differently on a second pass (preview/permit hash vs. sent body).
+      if (secret.startsWith('@secret:')) throw new Error('SECRET_UNAVAILABLE');
       this.secrets.add(secret);
       return secret;
     }

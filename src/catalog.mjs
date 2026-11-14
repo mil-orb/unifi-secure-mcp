@@ -334,6 +334,10 @@ export function auditSpec(source) {
       });
     params(item.parameters, ['paths', path, 'parameters']);
     for (const [method, op] of Object.entries(item)) {
+      // An operationId is a claim that the operation is registered; buildCatalog would
+      // skip these methods silently and the manifest counts would hide it.
+      if (['head', 'options', 'trace'].includes(method) && op?.operationId)
+        add(['paths', path, method], `HTTP method "${method}" is not supported`);
       if (!['get', 'post', 'put', 'patch', 'delete'].includes(method) || !op?.operationId) continue;
       params(op.parameters, ['paths', path, method, 'parameters']);
       if (op.requestBody) {
@@ -365,7 +369,12 @@ export function buildCatalog(source) {
     Object.entries(item)
       .filter(([m, o]) => ['get', 'post', 'put', 'patch', 'delete'].includes(m) && o.operationId)
       .map(([method, op]) => {
-        const parameters = [...(item.parameters || []), ...(op.parameters || [])];
+        // OpenAPI: an operation parameter overrides a path-level one with the same
+        // name and location.
+        const byKey = new Map();
+        for (const p of [...(item.parameters || []), ...(op.parameters || [])])
+          byKey.set(JSON.stringify([p.in, p.name]), p);
+        const parameters = [...byKey.values()];
         const properties = {},
           required = [];
         for (const place of ['path', 'query']) {

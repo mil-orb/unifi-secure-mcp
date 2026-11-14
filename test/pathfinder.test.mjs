@@ -262,6 +262,8 @@ test('external destination with internetAccessEnabled=false is blocked by the ne
 test('network isolation blocks traffic between local networks, labelled as inferred', () => {
   const s = fixture();
   s.networks[1].isolationEnabled = true;
+  // No user policy is ordered before the system-defined ones here.
+  s.ordering = { beforeSystemDefined: [], afterSystemDefined: [] };
   const r = run(s, { source: hub, destination: bulb });
   assert.equal(r.verdict, 'BLOCK');
   assert.equal(r.decidedBy.setting, 'isolationEnabled');
@@ -502,4 +504,102 @@ test('collect reads Wi-Fi broadcasts and ACL rules only for the same-network cas
   );
   assert.ok(!calls.includes('getFirewallPolicyOrdering'));
   for (const op of calls) assert.equal(byId.get(op).method, 'GET', op);
+});
+
+test('a user policy ordered before system-defined policies outranks network isolation', () => {
+  const s = fixture();
+  s.networks[1].isolationEnabled = true;
+  const allowed = run(s, { source: hub, destination: bulb, protocol: 'TCP', port: 443 });
+  assert.equal(allowed.verdict, 'ALLOW');
+  assert.equal(allowed.decidedBy.type, 'POLICY');
+  assert.equal(allowed.decidedBy.id, uid(41));
+  // When that policy does not match, isolation still decides, after it was evaluated.
+  s.policies[0].destination.trafficFilter = {
+    type: 'PORT',
+    portFilter: {
+      type: 'PORTS',
+      matchOpposite: false,
+      items: [{ type: 'PORT_NUMBER', value: 443 }],
+    },
+  };
+  const blocked = run(s, { source: hub, destination: bulb, protocol: 'TCP', port: 22 });
+  assert.equal(blocked.verdict, 'BLOCK');
+  assert.equal(blocked.decidedBy.setting, 'isolationEnabled');
+  assert.equal(blocked.evaluated[0].id, uid(41));
+  assert.equal(blocked.evaluated[0].result, 'no-match');
+  assert.ok(!blocked.evaluated.some((r) => r.stage !== 'beforeSystemDefined'));
+});
+
+test('an ICMP type filter is not treated as matching all ICMP traffic', () => {
+  const s = fixture();
+  s.policies[0].ipProtocolScope = {
+    ipVersion: 'IPV4',
+    protocolFilter: {
+      type: 'NAMED_PROTOCOL',
+      protocol: { name: 'ICMP' },
+      typenameFilter: 'ECHO_REPLY',
+      matchOpposite: false,
+    },
+  };
+  const icmp = run(s, { source: hub, destination: bulb, protocol: 'ICMP' });
+  assert.equal(icmp.evaluated[0].id, uid(41));
+  assert.equal(icmp.evaluated[0].result, 'indeterminate');
+  assert.match(icmp.evaluated[0].reasons[0], /ICMP type ECHO_REPLY/);
+  assert.equal(icmp.verdict, 'BLOCK');
+  assert.equal(icmp.decidedBy.id, uid(44));
+  assert.deepEqual(
+    icmp.indeterminateAbove.map((r) => r.id),
+    [uid(41)],
+  );
+  const tcp = run(s, { source: hub, destination: bulb, protocol: 'TCP', port: 443 });
+  assert.equal(tcp.evaluated[0].result, 'no-match');
+  // Without a type filter, ICMP still matches definitively.
+  delete s.policies[0].ipProtocolScope.protocolFilter.typenameFilter;
+  assert.equal(run(s, { source: hub, destination: bulb, protocol: 'ICMP' }).verdict, 'ALLOW');
+});
+
+test('a runtime-only filter still applies its static port constraint', () => {
+  const s = fixture();
+  s.policies[0].action = { type: 'BLOCK' };
+  s.policies[0].destination.trafficFilter = {
+    type: 'DOMAIN',
+    domainFilter: { type: 'SPECIFIC', domains: ['example.invalid'] },
+    portFilter: {
+      type: 'PORTS',
+      matchOpposite: false,
+      items: [{ type: 'PORT_NUMBER', value: 443 }],
+    },
+  };
+  const other = run(s, { source: hub, destination: bulb, protocol: 'TCP', port: 22 });
+  assert.equal(other.evaluated[0].result, 'no-match');
+  assert.match(other.evaluated[0].reasons[0], /destination port not matched/);
+  assert.deepEqual(other.indeterminateAbove, []);
+  const same = run(s, { source: hub, destination: bulb, protocol: 'TCP', port: 443 });
+  assert.equal(same.evaluated[0].result, 'indeterminate');
+  assert.match(same.evaluated[0].reasons[0], /domain filter is decided at runtime/);
+});
+
+test('an ordered policy missing because of the policy cap stays uncertain', () => {
+  const s = fixture();
+  s.policiesComplete = false;
+  // Policy 41 was ordered first but fell outside the policies that were read.
+  s.policies = s.policies.filter((p) => p.id !== uid(41));
+  const r = run(s, { source: hub, destination: bulb, protocol: 'TCP', port: 443 });
+  assert.equal(r.verdict, 'BLOCK');
+  assert.equal(r.decidedBy.id, uid(44));
+  assert.equal(r.evaluated[0].id, uid(41));
+  assert.equal(r.evaluated[0].stage, 'beforeSystemDefined');
+  assert.equal(r.evaluated[0].result, 'indeterminate');
+  assert.match(r.evaluated[0].reasons[0], /was not read/);
+  assert.deepEqual(
+    r.indeterminateAbove.map((x) => x.id),
+    [uid(41)],
+  );
+  assert.ok(r.caveats.some((c) => /indeterminateAbove/.test(c)));
+  // A complete snapshot does not invent rows for ordering ids it does not hold.
+  s.policiesComplete = true;
+  assert.deepEqual(
+    run(s, { source: hub, destination: bulb, protocol: 'TCP', port: 443 }).indeterminateAbove,
+    [],
+  );
 });
